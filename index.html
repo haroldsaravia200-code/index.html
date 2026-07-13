@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registro de EPP · RAM Equipos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --steel:#1B2027;
+    --steel-2:#2B323C;
+    --bg:#F1F2F4;
+    --card:#FFFFFF;
+    --yellow:#FFC72C;
+    --yellow-dark:#E8A800;
+    --orange:#E8590C;
+    --green:#2F9E44;
+    --red:#D6336C;
+    --text:#1B2027;
+    --text-soft:#5C6470;
+    --line:#DCDFE3;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:720px;margin:0 auto;min-height:100vh;background:var(--bg);padding-bottom:100px;}
+
+  /* ===== RESPONSIVE: TABLET / DESKTOP ===== */
+  @media (min-width:860px){
+    body{ padding:28px 16px; }
+    .app{
+      max-width:960px; min-height:auto; border-radius:22px; overflow:hidden;
+      box-shadow:0 20px 60px rgba(27,32,39,.12); border:1px solid var(--line);
+    }
+    .footer-nav{ max-width:960px; left:0; right:0; margin:0 auto; border-radius:0 0 22px 22px; }
+    .home-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
+    .home-card{ flex-direction:column; align-items:flex-start; text-align:left; }
+    .home-card-arrow{ align-self:flex-end; margin-top:auto; }
+    #histResults, #colabResults{
+      display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; align-items:start;
+    }
+    #histResults .rec-card, #colabResults .rec-card{ margin-bottom:0; }
+    #histResults .empty-state, #colabResults .empty-state{ grid-column:1/-1; }
+    .card, .cat, .divider, .success{ max-width:640px; margin-left:auto; margin-right:auto; }
+    .cat{ margin-bottom:10px; }
+  }
+
+  /* ===== HEADER / LETTERHEAD ===== */
+  .letterhead{
+    background:var(--steel);
+    color:#fff;
+    padding:16px 18px 14px;
+    position:relative;
+    overflow:hidden;
+  }
+  .letterhead::after{
+    content:"";
+    position:absolute; right:-40px; top:-40px; width:140px; height:140px;
+    background:repeating-linear-gradient(45deg, var(--yellow) 0 10px, transparent 10px 20px);
+    opacity:.12; border-radius:50%;
+  }
+  .lh-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .lh-badge{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--yellow);
+    background:rgba(255,199,44,.1); border:1px solid rgba(255,199,44,.35);
+    padding:3px 8px; border-radius:6px; white-space:nowrap;
+  }
+  .lh-title{
+    font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:20px;
+    letter-spacing:.5px; text-transform:uppercase; margin:8px 0 2px;
+  }
+  .lh-sub{font-size:11.5px; color:#B8BEC7; line-height:1.5;}
+  .lh-sub b{color:#fff; font-weight:600;}
+
+  /* nav tabs */
+  .tabs{display:flex; background:var(--steel-2);}
+  .tab{
+    flex:1; text-align:center; padding:11px 6px; font-size:13px; font-weight:600;
+    color:#9AA1AC; cursor:pointer; border-bottom:3px solid transparent; transition:.15s;
+  }
+  .tab.active{color:#fff; border-bottom-color:var(--yellow); background:rgba(255,255,255,.03);}
+
+  /* ===== PROGRESS ===== */
+  .progress-wrap{padding:16px 18px 4px;}
+  .progress-steps{display:flex; gap:6px; margin-bottom:8px;}
+  .pstep{flex:1; height:5px; border-radius:3px; background:var(--line); transition:.25s;}
+  .pstep.done{background:var(--yellow-dark);}
+  .pstep.current{background:var(--yellow);}
+  .progress-label{font-size:12px; color:var(--text-soft); font-weight:600; display:flex; justify-content:space-between;}
+  .progress-label span.n{color:var(--steel); font-family:'Barlow Condensed',sans-serif; font-weight:700;}
+
+  .view{padding:6px 18px 12px;}
+  .card{
+    background:var(--card); border-radius:var(--radius); padding:18px;
+    border:1px solid var(--line); margin-bottom:14px;
+  }
+  h2.step-title{
+    font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:22px;
+    margin:2px 0 4px; letter-spacing:.2px;
+  }
+  p.step-desc{font-size:13px; color:var(--text-soft); margin:0 0 16px; line-height:1.5;}
+
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block; font-size:12.5px; font-weight:600; color:var(--text-soft);
+    margin-bottom:6px; text-transform:uppercase; letter-spacing:.3px;
+  }
+  .field label .req{color:var(--orange);}
+  .field input[type=text], .field input[type=number], .field select, .field input[type=date]{
+    width:100%; padding:12px 13px; border:1.5px solid var(--line); border-radius:10px;
+    font-size:16px; font-family:'Inter',sans-serif; background:#FAFAFB; color:var(--text);
+  }
+  .field input:focus, .field select:focus{outline:none; border-color:var(--yellow-dark); background:#fff;}
+  .hint-banner{
+    display:flex; gap:8px; align-items:flex-start; background:#EAF7EE; border-left:3px solid var(--green);
+    color:#237339; font-size:12.5px; padding:9px 11px; border-radius:9px; margin:-4px 0 14px;
+  }
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  @media (max-width:420px){.grid2{grid-template-columns:1fr;}}
+
+  /* ===== CATEGORY ACCORDIONS ===== */
+  .cat{border:1.5px solid var(--line); border-radius:var(--radius); margin-bottom:10px; overflow:hidden; background:#fff;}
+  .cat-head{
+    display:flex; align-items:center; gap:12px; padding:14px 14px; cursor:pointer; user-select:none;
+  }
+  .cat-icon{
+    width:38px; height:38px; border-radius:10px; background:var(--bg); display:flex;
+    align-items:center; justify-content:center; flex-shrink:0; color:var(--steel);
+  }
+  .cat-icon svg{width:20px; height:20px;}
+  .cat-title{flex:1; font-weight:700; font-size:14.5px;}
+  .cat-count{
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600; color:var(--text-soft);
+    background:var(--bg); padding:3px 8px; border-radius:20px; min-width:20px; text-align:center;
+  }
+  .cat-count.has{background:var(--yellow); color:var(--steel);}
+  .chev{transition:.2s; color:var(--text-soft);}
+  .chev svg{width:18px; height:18px; display:block;}
+  .cat.open .chev{transform:rotate(180deg);}
+  .cat-body{display:none; padding:2px 14px 14px;}
+  .cat.open .cat-body{display:block;}
+  .item-row{
+    display:flex; flex-wrap:wrap; align-items:center; gap:11px; padding:11px 4px; border-top:1px solid #F0F1F2;
+  }
+  .item-row:first-child{border-top:none;}
+  .item-row-main{display:flex; align-items:center; gap:11px; flex:1 0 100%;}
+  .checkbox{
+    width:22px; height:22px; border-radius:6px; border:2px solid var(--line); flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; transition:.12s;
+  }
+  .checkbox.checked{background:var(--steel); border-color:var(--steel);}
+  .checkbox svg{width:13px; height:13px; opacity:0; transition:.12s;}
+  .checkbox.checked svg{opacity:1;}
+  .item-label{flex:1; font-size:14px; cursor:pointer;}
+  .talla-select{display:flex; gap:6px; flex-wrap:wrap; flex:1 0 100%; margin:2px 0 2px 33px;}
+  .talla-btn{
+    font-size:11.5px; font-weight:700; font-family:'IBM Plex Mono',monospace; padding:6px 10px;
+    border:1.5px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; color:var(--text-soft);
+    position:relative;
+  }
+  .talla-btn.sel{background:var(--yellow); border-color:var(--yellow-dark); color:var(--steel);}
+  .talla-btn.common::after{
+    content:""; position:absolute; top:-3px; right:-3px; width:6px; height:6px; border-radius:50%;
+    background:var(--orange);
+  }
+  .talla-btn.sel.common::after{display:none;}
+  .talla-input{
+    width:76px; padding:6px 8px; border:1.5px solid var(--line); border-radius:7px; font-size:16px;
+    flex:1 0 100%; margin-left:33px; max-width:120px;
+  }
+
+  textarea{
+    width:100%; padding:12px 13px; border:1.5px solid var(--line); border-radius:10px;
+    font-size:16px; font-family:'Inter',sans-serif; background:#FAFAFB; resize:vertical; min-height:60px;
+  }
+
+  /* radio pills */
+  .pillgroup{display:flex; gap:8px; flex-wrap:wrap;}
+  .pill{
+    flex:1; text-align:center; padding:13px 10px; border:1.5px solid var(--line); border-radius:10px;
+    font-size:13px; font-weight:600; cursor:pointer; color:var(--text-soft); background:#FAFAFB; min-width:100px;
+  }
+  .pill.sel{background:var(--steel); color:#fff; border-color:var(--steel);}
+
+  /* signature */
+  .sig-box{border:1.5px dashed var(--line); border-radius:12px; background:#FAFAFB; position:relative;}
+  canvas{width:100%; height:150px; display:block; border-radius:12px; touch-action:none;}
+  .sig-clear{
+    position:absolute; top:8px; right:8px; background:#fff; border:1px solid var(--line);
+    border-radius:7px; font-size:11px; font-weight:600; padding:5px 9px; cursor:pointer; color:var(--text-soft);
+  }
+  .sig-placeholder{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:12.5px; color:#B4B9C0; pointer-events:none;
+  }
+
+  .declaration{
+    font-size:12px; color:var(--text-soft); line-height:1.55; background:var(--bg);
+    border-radius:10px; padding:12px 13px; margin-bottom:14px;
+  }
+
+  /* footer nav */
+  .footer-nav{
+    position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line);
+    padding:12px 18px calc(12px + env(safe-area-inset-bottom));
+    display:flex; gap:10px; max-width:720px; margin:0 auto;
+  }
+  .btn{
+    flex:1; padding:14px; border-radius:11px; font-size:15px; font-weight:700; cursor:pointer;
+    border:none; font-family:'Inter',sans-serif; transition:.12s;
+  }
+  .btn-primary{background:var(--steel); color:#fff;}
+  .btn-primary:active{transform:scale(.98);}
+  .btn-primary:disabled{background:#C7CBD1; cursor:not-allowed;}
+  .btn-ghost{background:#fff; color:var(--steel); border:1.5px solid var(--line); flex:0 0 auto; padding:14px 18px;}
+
+  .summary-row{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #F0F1F2; font-size:13.5px;}
+  .summary-row:last-child{border-bottom:none;}
+  .summary-row .k{color:var(--text-soft);}
+  .summary-row .v{font-weight:600; text-align:right;}
+  .summary-cat{font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:14px; margin:14px 0 4px; color:var(--steel);}
+  .chip{
+    display:inline-block; background:var(--bg); font-size:12px; padding:5px 10px; border-radius:20px;
+    margin:3px 4px 0 0; color:var(--text);
+  }
+
+  /* success screen */
+  .success{text-align:center; padding:40px 20px;}
+  .success-icon{
+    width:74px; height:74px; border-radius:50%; background:#EAF7EE; color:var(--green);
+    display:flex; align-items:center; justify-content:center; margin:0 auto 18px;
+  }
+  .success-icon svg{width:34px; height:34px;}
+  .success h2{font-family:'Barlow Condensed',sans-serif; font-size:24px; margin:0 0 6px;}
+  .success p{color:var(--text-soft); font-size:14px; margin:0 0 22px;}
+  .sync-badge{
+    display:inline-block; font-size:12px; font-weight:600; padding:8px 14px; border-radius:20px;
+    margin:-8px 0 20px;
+  }
+  .sync-badge.syncing{background:var(--bg); color:var(--text-soft);}
+  .sync-badge.ok{background:#EAF7EE; color:var(--green);}
+  .sync-badge.error{background:#FFF4E5; color:#8A5300; white-space:normal; max-width:340px; text-align:left; border-radius:12px;}
+
+  /* ===== HISTORIAL ===== */
+  .search-bar{
+    display:flex; gap:8px; margin-bottom:12px;
+  }
+  .search-bar input{
+    flex:1; padding:11px 13px; border:1.5px solid var(--line); border-radius:10px; font-size:16px; background:#fff;
+  }
+  .icon-btn{
+    width:44px; height:44px; border-radius:10px; border:1.5px solid var(--line); background:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--steel); flex-shrink:0;
+    font:inherit; padding:0;
+  }
+  .icon-btn svg{width:20px; height:20px;}
+  .rec-card{
+    background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:13px 14px; margin-bottom:10px;
+  }
+  .rec-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .rec-name{font-weight:700; font-size:14.5px;}
+  .rec-meta{font-size:12px; color:var(--text-soft); margin-top:2px;}
+  .rec-date{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; background:var(--bg); padding:4px 8px;
+    border-radius:7px; white-space:nowrap; color:var(--steel); font-weight:600;
+  }
+  .rec-tags{margin-top:8px;}
+  .rec-actions{display:flex; gap:8px; margin-top:10px;}
+  .rec-actions button{
+    font-size:12px; font-weight:600; padding:7px 11px; border-radius:8px; border:1.5px solid var(--line);
+    background:#fff; color:var(--text-soft); cursor:pointer;
+  }
+  .rec-actions button.danger{color:var(--red); border-color:#F4C6D6;}
+  .empty-state{text-align:center; padding:50px 20px; color:var(--text-soft);}
+  .empty-state svg{width:44px; height:44px; margin-bottom:12px; color:var(--line);}
+  .loading{text-align:center; padding:40px; color:var(--text-soft); font-size:13px;}
+  .toast{
+    position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--steel); color:#fff;
+    padding:11px 18px; border-radius:30px; font-size:13px; font-weight:600; z-index:50; opacity:0; transition:.25s;
+    box-shadow:0 8px 20px rgba(0,0,0,.2); white-space:nowrap;
+  }
+  .toast.show{opacity:1; bottom:100px;}
+  .sig-thumb{border:1px solid var(--line); border-radius:8px; background:#fff; max-width:180px; display:block; margin-top:4px;}
+
+  /* worker picker */
+  .worker-pick-list{display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto;}
+  .worker-pick{
+    display:flex; align-items:center; gap:11px; padding:11px; border:1.5px solid var(--line);
+    border-radius:11px; cursor:pointer; background:#FAFAFB; transition:.12s;
+  }
+  .worker-pick:active{background:#EFEFF1;}
+  .worker-pick-avatar{
+    width:36px; height:36px; border-radius:50%; background:var(--yellow); color:var(--steel);
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px;
+    font-family:'Barlow Condensed',sans-serif; flex-shrink:0;
+  }
+  .worker-pick-info{flex:1; min-width:0;}
+  .worker-pick-name{font-weight:700; font-size:13.5px;}
+  .worker-pick-meta{font-size:11.5px; color:var(--text-soft); margin-top:1px;}
+  .worker-pick-arrow{color:var(--text-soft); flex-shrink:0;}
+  .divider{
+    display:flex; align-items:center; text-align:center; color:var(--text-soft); font-size:12px;
+    font-weight:600; margin:6px 4px 14px;
+  }
+  .divider::before, .divider::after{content:""; flex:1; height:1px; background:var(--line);}
+  .divider span{padding:0 10px;}
+  .storage-warn{
+    display:flex; gap:8px; align-items:flex-start; background:#FFF4E5; border-left:3px solid var(--orange);
+    color:#8A5300; font-size:12.5px; padding:10px 12px; border-radius:10px; margin:0 18px 12px;
+  }
+
+  /* ===== DASHBOARD ===== */
+  .kpi-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px; }
+  .kpi-card{ background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; }
+  .kpi-value{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:24px; color:var(--steel); line-height:1.1; }
+  .kpi-label{ font-size:11px; color:var(--text-soft); text-transform:uppercase; letter-spacing:.3px; margin-top:3px; }
+
+  .hbar-row{ margin-bottom:14px; }
+  .hbar-row:last-child{ margin-bottom:0; }
+  .hbar-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:5px; }
+  .hbar-label{ font-size:12.5px; color:var(--text); font-weight:600; line-height:1.35; }
+  .hbar-track{ height:13px; background:var(--bg); border-radius:8px; overflow:hidden; width:100%; }
+  .hbar-fill{ height:100%; border-radius:8px; transition:width .3s; }
+  .hbar-value{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:700; color:var(--text-soft); flex-shrink:0; white-space:nowrap; }
+
+  .vbar-chart{ display:flex; align-items:flex-end; gap:6px; height:130px; padding-top:20px; overflow-x:auto; }
+  .vbar-col{ flex:1 0 40px; min-width:40px; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; justify-content:flex-end; }
+  .vbar-bar{ width:100%; max-width:26px; border-radius:5px 5px 0 0; background:var(--steel); min-height:3px; }
+  .vbar-label{ font-size:9.5px; color:var(--text-soft); white-space:normal; text-align:center; line-height:1.2; }
+  .vbar-value{ font-size:10.5px; font-weight:700; color:var(--steel); font-family:'IBM Plex Mono',monospace; }
+
+  .donut-wrap{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+  .donut-svg{ width:140px; height:140px; flex-shrink:0; }
+  .donut-legend{ flex:1; min-width:140px; }
+  .legend-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:7px; }
+  .legend-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .legend-label{ flex:1; }
+  .legend-value{ font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--text-soft); font-size:11.5px; }
+
+  .dash-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:420px; }
+  .dash-table th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; color:var(--text-soft); padding:7px 8px; border-bottom:2px solid var(--line); white-space:nowrap; }
+  .dash-table td{ padding:8px 8px; border-bottom:1px solid #F0F1F2; }
+  .dash-table tbody tr:hover{ background:var(--bg); }
+
+  @media (min-width:860px){
+    .kpi-grid{ grid-template-columns:repeat(4,1fr); }
+    .dash-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+    .card.full-width{ max-width:none; margin-left:0; margin-right:0; }
+  }
+
+  /* ===== COLABORADORES MODULE ===== */
+  .colab-toolbar{display:flex; gap:8px; margin-bottom:10px;}
+  .filter-pills{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;}
+  .filter-pill{
+    font-size:12px; font-weight:600; padding:7px 12px; border-radius:20px; border:1.5px solid var(--line);
+    background:#fff; color:var(--text-soft); cursor:pointer;
+  }
+  .filter-pill.sel{background:var(--steel); color:#fff; border-color:var(--steel);}
+  .status-badge{
+    font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:20px; text-transform:uppercase;
+    letter-spacing:.3px; white-space:nowrap;
+  }
+  .status-badge.activo{background:#EAF7EE; color:var(--green);}
+  .status-badge.inactivo{background:#F1F2F4; color:var(--text-soft);}
+  .fab-add{
+    width:44px; height:44px; border-radius:10px; background:var(--steel); color:#fff; border:none;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; font:inherit; padding:0;
+  }
+  .fab-add svg{width:20px; height:20px;}
+  .combo-box{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    width:100%; padding:12px 13px; border:1.5px solid var(--line); border-radius:10px;
+    font-size:15px; font-family:'Inter',sans-serif; background:#FAFAFB; cursor:pointer; user-select:none;
+  }
+  .combo-box.open{ border-color:var(--yellow-dark); background:#fff; border-radius:10px 10px 0 0; }
+  .combo-box .combo-placeholder{ color:#9AA1AC; }
+  .combo-box .chev{ flex-shrink:0; transition:.15s; }
+  .combo-box.open .chev{ transform:rotate(180deg); }
+  .combo-list{
+    border:1.5px solid var(--yellow-dark); border-top:none; border-radius:0 0 10px 10px;
+    max-height:280px; overflow-y:auto; background:#fff;
+  }
+  .combo-option{
+    padding:12px 13px; font-size:14px; cursor:pointer; border-top:1px solid #F0F1F2;
+  }
+  .combo-option:first-child{ border-top:none; }
+  .combo-option:active{ background:var(--bg); }
+  .combo-option.sel{ background:#FFF8E6; font-weight:600; }
+
+  /* ===== HOME MENU ===== */
+  .home-lead{font-size:13px; color:var(--text-soft); margin:4px 4px 14px;}
+  .home-card{
+    display:flex; align-items:center; gap:14px; background:#fff; border:1.5px solid var(--line);
+    border-radius:16px; padding:18px; margin-bottom:12px; cursor:pointer; transition:.12s;
+  }
+  .home-card:active{background:#FAFAFB;}
+  .home-card-icon{
+    width:52px; height:52px; border-radius:14px; background:var(--bg); color:var(--steel);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .home-card-icon svg{width:26px; height:26px;}
+  .home-card-text{flex:1; min-width:0;}
+  .home-card-title{font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:17px;}
+  .home-card-desc{font-size:12.5px; color:var(--text-soft); margin-top:2px; line-height:1.4;}
+  .home-card-arrow{color:var(--text-soft); flex-shrink:0;}
+  .home-card-arrow svg{width:20px; height:20px;}
+  .back-tab{flex:0 0 auto !important; padding:11px 16px !important;}
+  .title-tab{flex:2; text-align:left !important; padding-left:6px !important; cursor:default !important;}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ DATA ============ */
+const COMPANY = {
+  razon: 'RAM EQUIPOS S.A.C.',
+  ruc: '20604624950',
+  domicilio: 'Mz D. Lt 1. Urb Jardines de Santa Rosa. Primera Etapa. - SMP.',
+  actividad: 'Reparación y mantenimiento en equipos mineros y de construcción',
+  codigo: 'RAM-SSOMA-FT-017', version: '2', fecha_doc: 'Marzo 2024'
+};
+
+const ICONS = {
+  helmet:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 15c0-4.4 3.6-8 8-8s8 3.6 8 8H4z"/><path d="M2 15h20"/><path d="M9 7.5V5.5"/></svg>',
+  goggles:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="13" r="4"/><circle cx="17" cy="13" r="4"/><path d="M11 12h2"/><path d="M3 10l1.5-2h3M21 10l-1.5-2h-3"/></svg>',
+  mask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11c0-2 2-4 8-4s8 2 8 4v3c0 3-3 5-8 5s-8-2-8-5v-3z"/><circle cx="9" cy="12.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="12.5" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/></svg>',
+  headphones:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 15v-3a8 8 0 0116 0v3"/><rect x="2.5" y="14" width="4" height="6" rx="1.5"/><rect x="17.5" y="14" width="4" height="6" rx="1.5"/></svg>',
+  glove:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 11V5.5a1.5 1.5 0 013 0V10M10 10V4.5a1.5 1.5 0 013 0V10M13 10V5a1.5 1.5 0 013 0v6M16 11V7.5a1.5 1.5 0 013 0V13c0 4-2.5 7-7 7s-7-2-7-6v-2c0-1.5 1-2.5 2-2.5"/></svg>',
+  boot:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3v9l-5 3.5c-.6.4-1 1.2-1 2V19a1 1 0 001 1h16a1 1 0 001-1v-1c0-2-1.5-3-3-3h-4V3H9z"/></svg>',
+  vest:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4l4 2.5L16 4l3 3-2 2v11H7V9L5 7l3-3z"/><path d="M12 6.5V19"/></svg>',
+  other:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>',
+  chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  success:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v.01M12 11v5"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  empty:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 10h8M8 14h5"/></svg>',
+  download:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  chev_right:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.5 17a1.8 1.8 0 001.5 2.7h16a1.8 1.8 0 001.5-2.7L13.7 3.9a1.8 1.8 0 00-3.4 0z"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  power:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6 6a8 8 0 1012 0"/></svg>',
+  pencil:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2 2 0 012.83 2.83L7 18.66 3 19.5 3.84 15.5 16.5 3.5z"/></svg>',
+  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5.2 5.5-5.2S14.5 16 14.5 19"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 13.2c2.4.2 4 2 4 4.4"/></svg>',
+  refresh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0115.3-6.4M21 12a9 9 0 01-15.3 6.4"/><path d="M3 4v5h5M21 20v-5h-5"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V12M10 20V6M16 20v-9"/><path d="M2 20h20"/></svg>'
+};
+
+const CHART_COLORS = ['#1A428A','#FF5F00','#6BBDEA','#FBB03B','#706F6F','#2F9E44','#D6336C','#1B2027','#8B5CF6'];
+
+function categoryColorMap(){
+  const map = {};
+  CATEGORIES.forEach((c,i)=>{ map[c.label] = CHART_COLORS[i % CHART_COLORS.length]; });
+  map['Otros'] = CHART_COLORS[CATEGORIES.length % CHART_COLORS.length];
+  return map;
+}
+function getCategoryColor(categoria){
+  if(!CATEGORY_COLORS_CACHE) CATEGORY_COLORS_CACHE = categoryColorMap();
+  return CATEGORY_COLORS_CACHE[categoria] || '#9AA1AC';
+}
+let CATEGORY_COLORS_CACHE = null;
+
+const GLOVE_SIZES = ['S','M','L','XL','XXL'];
+
+const CATEGORIES = [
+ { key:'cabeza', label:'Protección de cabeza', icon:'helmet', items:[
+    {id:'casco_amarillo', label:'Casco amarillo'},
+    {id:'casco_blanco', label:'Casco blanco'},
+    {id:'tafilete', label:'Tafilete'},
+    {id:'barbiquejo', label:'Barbiquejo'},
+    {id:'cortaviento', label:'Cortaviento'} ]},
+ { key:'ocular', label:'Protección ocular', icon:'goggles', items:[
+    {id:'lentes_oscuros', label:'Lentes oscuros'},
+    {id:'lentes_claros', label:'Lentes claros'},
+    {id:'sobrelentes_oscuros', label:'Sobrelentes oscuros'},
+    {id:'sobrelentes_claros', label:'Sobrelentes claros'} ]},
+ { key:'respiratoria', label:'Protección respiratoria', icon:'mask', items:[
+    {id:'resp_7502', label:'Respirador media cara 7502'},
+    {id:'resp_7025', label:'Respirador media cara 7025'},
+    {id:'filtro_p100', label:'Filtro partículas P100 · 2097'},
+    {id:'filtro_vap_org', label:'Filtro vapores orgánicos 6003'},
+    {id:'filtro_humos', label:'Filtro humos metálicos 7093'},
+    {id:'filtro_n95', label:'Filtro partículas N95 · 5N11'},
+    {id:'cartucho_vap_gases', label:'Cartucho vapores org./gases ácidos 6003'},
+    {id:'cartucho_6059', label:'Cartucho 6059'},
+    {id:'cobertor_2000', label:'Cobertor de filtro 2000 3M'},
+    {id:'cobertor_502', label:'Cobertor de filtro 502 3M'} ]},
+ { key:'facial', label:'Protección facial', icon:'shield', items:[
+    {id:'careta_esmerilar', label:'Careta de esmerilar'},
+    {id:'careta_soldar', label:'Careta de soldar'},
+    {id:'clip_facial', label:'Clip facial'},
+    {id:'mica_facial', label:'Mica facial'},
+    {id:'luna_clara', label:'Luna de careta clara'},
+    {id:'luna_oscura', label:'Luna de careta oscura'} ]},
+ { key:'auditiva', label:'Protección auditiva', icon:'headphones', items:[
+    {id:'tapones', label:'Tapones auditivos'},
+    {id:'orejeras', label:'Orejeras'} ]},
+ { key:'manos', label:'Protección de manos', icon:'glove', items:[
+    {id:'guantes_anticorte', label:'Guantes anticorte', talla:GLOVE_SIZES},
+    {id:'guantes_badana', label:'Guantes badana', talla:GLOVE_SIZES},
+    {id:'guantes_nitrilo', label:'Guantes nitrilo', talla:GLOVE_SIZES},
+    {id:'guantes_lavado', label:'Guantes de lavado verde', talla:GLOVE_SIZES},
+    {id:'guantes_soldar', label:'Guantes de soldar', talla:GLOVE_SIZES},
+    {id:'mangas_soldar', label:'Mangas de soldar', talla:GLOVE_SIZES} ]},
+ { key:'pies', label:'Protección de pies', icon:'boot', items:[
+    {id:'zapatos_acero', label:'Zapatos punta de acero', talla:'free'},
+    {id:'botas_soldador', label:'Botas de soldador', talla:'free'},
+    {id:'botas_pvc', label:'Botas PVC', talla:'free'},
+    {id:'escarpines', label:'Escarpines'} ]},
+ { key:'cuerpo', label:'Protección de cuerpo', icon:'vest', items:[
+    {id:'mandil_cuero', label:'Mandil de cuero'},
+    {id:'traje_tyvek', label:'Traje Tyvek', talla:['M','L','XL']},
+    {id:'casaca_cuero', label:'Casaca de cuero'},
+    {id:'pantalon_overol', label:'Pantalón overol de cuero'},
+    {id:'polo_ram', label:'Polo RAM', talla:'free'},
+    {id:'pantalon', label:'Pantalón', talla:'free'},
+    {id:'chompa', label:'Chompa J. Chávez', talla:'free'},
+    {id:'camisaco_camisa', label:'Camisaco / Camisa'} ]},
+];
+
+const STEP_LABELS = ['Colaborador','EPP a entregar','Entrega y firma','Confirmar'];
+
+/* ============ STATE ============ */
+let state = {
+  view: 'home', // 'home' | 'form' | 'colaboradores' | 'historial'
+  step: 1,
+  worker: { nombre:'', dni:'', cargo:'', sede:'' },
+  items: {},        // { itemId: {checked:true, talla:'M'} }
+  otros: '',
+  tipo_entrega: '',
+  fecha: new Date().toISOString().slice(0,10),
+  signatureData: null,
+  openCat: null,
+  step1Search: '',
+  step1DropdownOpen: false,
+  colabFilter: 'activos',   // 'todos' | 'activos' | 'inactivos'
+  colabSearch: '',
+  colabForm: null,          // null | {mode:'new'|'edit', dni, nombre, cargo, sede, estado, origDni}
+  dashFilters: { sede:'', categoria:'', desde:'', hasta:'' },
+  dashColabView: 'categoria', // 'categoria' | 'item' | 'detalle'
+  syncStatus: 'idle',       // 'idle' | 'syncing' | 'ok' | 'error'
+  syncMessage: '',
+  showSheetConnect: false,
+  sheetConnectStatus: 'idle', // 'idle' | 'testing' | 'error'
+  sheetConnectMessage: '',
+};
+let workersMap = {};
+let sheetUrl = null;
+let historialCache = null;
+let searchTerm = '';
+
+/* ============ SHEET URL PERSISTENCE (browser localStorage, no Claude dependency) ============ */
+function loadSheetUrlFromBrowser(){
+  try{ return localStorage.getItem('ram_epp_sheet_url') || null; }
+  catch(e){ return null; }
+}
+function persistSheetUrlToBrowser(url){
+  try{ localStorage.setItem('ram_epp_sheet_url', url); }
+  catch(e){ console.warn('No se pudo recordar la URL en este navegador', e); }
+}
+
+/* ============ DATA LAYER — la Hoja de Google es la única fuente de datos ============ */
+async function loadWorkersMap(){
+  if(!sheetUrl){ workersMap = {}; return; }
+  try{
+    const sep = sheetUrl.includes('?') ? '&' : '?';
+    const json = await sheetFetch(sheetUrl + sep + 'type=colaboradores');
+    const map = {};
+    (json.rows||[]).forEach(row=>{
+      const dni = String(row['DNI']||'').trim();
+      if(!dni) return;
+      map[dni] = {
+        nombre: row['Nombre']||'',
+        cargo: row['Cargo']||'',
+        sede: row['Sede']||'',
+        nivel: row['Nivel']||'',
+        estado: String(row['Estado']||'Activo').toLowerCase()==='activo' ? 'activo' : 'inactivo'
+      };
+    });
+    workersMap = map;
+  }catch(e){
+    console.error('No se pudo cargar colaboradores desde la hoja', e);
+  }
+}
+
+async function fetchAllRecords(){
+  if(!sheetUrl) return [];
+  try{
+    const sep = sheetUrl.includes('?') ? '&' : '?';
+    const json = await sheetFetch(sheetUrl + sep + 'type=registros');
+    const rows = json.rows || [];
+    const byId = {};
+    const order = [];
+    rows.forEach(row=>{
+      const id = String(row['ID']||'');
+      if(!id) return;
+      if(!byId[id]){
+        byId[id] = {
+          id,
+          fecha: row['Fecha']||'',
+          worker: { nombre: row['Trabajador']||'', dni: String(row['DNI']||''), cargo: row['Cargo']||'', sede: row['Sede']||'' },
+          tipo_entrega: row['Tipo de entrega']||'',
+          otros: '',
+          _itemRows: []
+        };
+        order.push(id);
+      }
+      byId[id]._itemRows.push({ categoria: row['Categoría']||'', item: row['EPPs']||'', talla: row['Talla']||'' });
+    });
+    return order.map(id => byId[id]).reverse();
+  }catch(e){
+    console.error('No se pudo cargar registros desde la hoja', e);
+    return [];
+  }
+}
+
+async function saveRecord(record){
+  const res = await syncRegistroToSheet(record);
+  if(!res.ok){ throw new Error(res.message || 'No se pudo guardar en la Hoja de Google'); }
+  record._itemRows = buildItemRows(record);
+  if(historialCache) historialCache.unshift(record);
+  const prevEstado = workersMap[record.worker.dni] ? workersMap[record.worker.dni].estado : 'activo';
+  if(!workersMap[record.worker.dni]){
+    workersMap[record.worker.dni] = { nombre:record.worker.nombre, cargo:record.worker.cargo, sede:record.worker.sede, nivel:'', estado: prevEstado };
+  }
+  return true;
+}
+
+async function deleteRecord(id){
+  await deleteRegistroFromSheet(id);
+  if(historialCache) historialCache = historialCache.filter(r=>r.id!==id);
+}
+
+async function saveColaborador(data, origDni){
+  const res = await syncColaboradorToSheet(data);
+  if(!res.ok){ throw new Error(res.message || 'No se pudo guardar en la Hoja de Google'); }
+  if(origDni && origDni !== data.dni){ delete workersMap[origDni]; deleteColaboradorFromSheet(origDni); }
+  workersMap[data.dni] = { nombre:data.nombre, cargo:data.cargo, sede:data.sede, nivel:data.nivel||'', estado:data.estado };
+}
+
+async function deleteColaborador(dni){
+  await deleteColaboradorFromSheet(dni);
+  delete workersMap[dni];
+}
+
+async function toggleEstadoColaborador(dni){
+  if(!workersMap[dni]) return;
+  const prevEstado = workersMap[dni].estado;
+  workersMap[dni].estado = prevEstado === 'activo' ? 'inactivo' : 'activo';
+  const res = await syncColaboradorToSheet({dni, ...workersMap[dni]});
+  if(!res.ok){
+    workersMap[dni].estado = prevEstado;
+    throw new Error(res.message || 'No se pudo actualizar en la hoja');
+  }
+}
+
+/* ============ UTIL ============ */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function fmtDate(raw){
+  if(!raw) return '—';
+  const s = String(raw);
+  // Fecha simple "AAAA-MM-DD" (recién creada, aún no pasó por la hoja)
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+    const d = new Date(s + 'T00:00:00');
+    if(isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('es-PE', { day:'2-digit', month:'short', year:'numeric' });
+  }
+  // Fecha/hora completa devuelta por Google Sheets: formatear en UTC para no correr de día
+  const d = new Date(s);
+  if(isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('es-PE', { day:'2-digit', month:'short', year:'numeric', timeZone:'UTC' });
+}
+function itemCountForCat(cat){
+  return cat.items.filter(it => state.items[it.id] && state.items[it.id].checked).length;
+}
+function totalSelected(){
+  return Object.values(state.items).filter(v=>v.checked).length;
+}
+function tipoEntregaLabel(v){
+  const map = {primera:'Primera entrega', renovacion:'Renovación', servicio:'Por servicio'};
+  if(map[v]) return map[v];
+  return v || '—';
+}
+
+/* ============ RENDER ROOT ============ */
+function render(){
+  const app = document.getElementById('app');
+  let body;
+  if(state.view==='home') body = renderHomeView();
+  else if(state.view==='form') body = renderFormView();
+  else if(state.view==='colaboradores') body = renderColaboradoresView();
+  else if(state.view==='dashboard') body = renderDashboardView();
+  else body = renderHistorialView();
+  app.innerHTML = renderLetterhead() + renderTopBar() + body;
+  attachHandlers();
+  if((state.view==='historial' || state.view==='dashboard') && historialCache===null){ refreshHistorial(); }
+}
+
+function renderLetterhead(){
+  return `
+  <div class="letterhead">
+    <div class="lh-top">
+      <div>
+        <div class="lh-title">Registro de EPP</div>
+        <div class="lh-sub"><b>${COMPANY.razon}</b> · RUC ${COMPANY.ruc}</div>
+        <div class="lh-sub">${COMPANY.actividad}</div>
+      </div>
+      <div class="lh-badge">${COMPANY.codigo}<br>v${COMPANY.version}</div>
+    </div>
+  </div>`;
+}
+
+const SECTION_TITLES = { form:'Entregar EPPs', colaboradores:'Colaboradores', historial:'Historial', dashboard:'Dashboard' };
+
+function renderTopBar(){
+  if(state.view==='home') return '';
+  const warn = (!sheetUrl) ? `<div class="storage-warn"><span>Sin conectar a una Hoja de Google: los datos no se guardarán en ningún lado. Ve al Menú para conectar una.</span></div>` : '';
+  return `
+  <div class="tabs">
+    <div class="tab back-tab" data-tab="home">‹ Menú</div>
+    <div class="tab active title-tab">${SECTION_TITLES[state.view]}</div>
+  </div>
+  ${warn}`;
+}
+
+function sheetConnectStatusHtml(){
+  if(state.sheetConnectStatus==='testing') return `<div class="sync-badge syncing" style="display:block; margin:10px 0 0;">Probando conexión…</div>`;
+  if(state.sheetConnectStatus==='error') return `<div class="sync-badge error" style="display:block; margin:10px 0 0;">No se pudo conectar${state.sheetConnectMessage?': '+state.sheetConnectMessage:''}.</div>`;
+  return '';
+}
+
+function renderHomeView(){
+  if(!sheetUrl || state.showSheetConnect){
+    return `
+    <div class="view">
+      <div class="card">
+        <h2 class="step-title">Conecta tu Hoja de Google</h2>
+        <p class="step-desc">Pega la URL de la aplicación web de Apps Script (termina en <code>/exec</code>) que publicaste desde tu Hoja de Google. Desde ese momento, cada entrega y colaborador se sincroniza automáticamente ahí.</p>
+        <div class="field" style="margin-bottom:0;">
+          <label>URL de la aplicación web</label>
+          <div style="position:relative;">
+            <input type="text" id="in_sheet_url" placeholder="https://script.google.com/macros/s/XXXXX/exec" value="${sheetUrl||''}" name="ram_epp_sheet_url_field" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" style="padding-right:38px;">
+            <button type="button" id="btnClearSheetUrl" title="Borrar" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:26px; height:26px; border:none; background:var(--bg); border-radius:50%; color:var(--text-soft); font-size:15px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</button>
+          </div>
+        </div>
+        <div id="sheetConnectStatusWrap">${sheetConnectStatusHtml()}</div>
+        <button class="btn btn-primary" id="btnConnectSheet" style="width:100%; margin-top:14px;">Conectar</button>
+        ${sheetUrl ? `<button class="btn btn-ghost" id="btnCancelSheetConnect" style="width:100%; margin-top:8px; flex:none;">Cancelar</button>` : ''}
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="view">
+    <p class="home-lead">¿Qué necesitas hacer?</p>
+    <div class="home-grid">
+    <div class="home-card" data-tab="form">
+      <div class="home-card-icon">${ICONS.helmet}</div>
+      <div class="home-card-text">
+        <div class="home-card-title">Entregar EPPs</div>
+        <div class="home-card-desc">Registra la entrega de equipos de protección a un colaborador.</div>
+      </div>
+      <div class="home-card-arrow">${ICONS.chev_right}</div>
+    </div>
+    <div class="home-card" data-tab="colaboradores">
+      <div class="home-card-icon">${ICONS.people}</div>
+      <div class="home-card-text">
+        <div class="home-card-title">Colaboradores</div>
+        <div class="home-card-desc">Crea, edita, activa o desactiva a los colaboradores.</div>
+      </div>
+      <div class="home-card-arrow">${ICONS.chev_right}</div>
+    </div>
+    <div class="home-card" data-tab="historial">
+      <div class="home-card-icon">${ICONS.list}</div>
+      <div class="home-card-text">
+        <div class="home-card-title">Historial</div>
+        <div class="home-card-desc">Consulta y exporta todas las entregas registradas.</div>
+      </div>
+      <div class="home-card-arrow">${ICONS.chev_right}</div>
+    </div>
+    <div class="home-card" data-tab="dashboard">
+      <div class="home-card-icon">${ICONS.chart}</div>
+      <div class="home-card-text">
+        <div class="home-card-title">Dashboard</div>
+        <div class="home-card-desc">Gráficos de consumo de EPP por ítem, sede, categoría y tiempo.</div>
+      </div>
+      <div class="home-card-arrow">${ICONS.chev_right}</div>
+    </div>
+    </div>
+    <p style="text-align:center; font-size:11.5px; color:var(--text-soft); margin-top:6px;">Hoja de Google conectada ✓ · <span id="btnEditSheetLink" style="color:var(--steel); font-weight:600; cursor:pointer;">cambiar</span></p>
+  </div>`;
+}
+
+/* ============ FORM VIEW ============ */
+function renderFormView(){
+  if(state.step === 5){ return renderSuccess(); }
+  const pct = state.step;
+  let steps = '';
+  for(let i=1;i<=4;i++){
+    steps += `<div class="pstep ${i<pct?'done':(i===pct?'current':'')}"></div>`;
+  }
+  let body = '';
+  if(state.step===1) body = renderStep1();
+  else if(state.step===2) body = renderStep2();
+  else if(state.step===3) body = renderStep3();
+  else if(state.step===4) body = renderStep4();
+
+  return `
+  <div class="progress-wrap">
+    <div class="progress-steps">${steps}</div>
+    <div class="progress-label"><span>${STEP_LABELS[state.step-1]}</span><span class="n">Paso ${state.step} de 4</span></div>
+  </div>
+  <div class="view">${body}</div>
+  ${renderFooterNav()}
+  `;
+}
+
+function renderStep1(){
+  const w = state.worker;
+  const activos = Object.entries(workersMap)
+    .filter(([dni,v]) => (v.estado||'activo') === 'activo')
+    .map(([dni,v]) => ({dni, ...v}))
+    .sort((a,b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  if(activos.length === 0){
+    return `
+    <div class="card">
+      <h2 class="step-title">Selecciona un colaborador</h2>
+      <p class="step-desc">Todavía no hay colaboradores activos registrados. Créalos primero en el módulo de Colaboradores para poder entregarles EPPs.</p>
+      <button class="btn btn-primary" data-tab="colaboradores" style="width:100%;">Ir a Colaboradores</button>
+    </div>`;
+  }
+
+  const selected = activos.find(r=>r.dni===w.dni);
+  const comboLabel = selected ? `${selected.nombre} — ${selected.cargo || 'sin cargo'}` : '— Selecciona un colaborador —';
+  const optionsHtml = activos.map(r => `
+    <div class="combo-option ${w.dni===r.dni?'sel':''}" data-combo-option="${r.dni}">${r.nombre} — ${r.cargo || 'sin cargo'}</div>`).join('');
+  const detailsHtml = w.dni ? `
+    <div class="summary-row" style="margin-top:14px;"><span class="k">DNI</span><span class="v">${w.dni}</span></div>
+    <div class="summary-row"><span class="k">Cargo</span><span class="v">${w.cargo}</span></div>
+    <div class="summary-row"><span class="k">Sede</span><span class="v">${w.sede}</span></div>` : '';
+
+  return `
+  <div class="card">
+    <h2 class="step-title">Selecciona un colaborador</h2>
+    <p class="step-desc">Elige de la lista, en orden alfabético. ¿No aparece? Créalo primero en Colaboradores.</p>
+    <div class="field" style="margin-bottom:0;">
+      <label>Colaborador <span class="req">*</span></label>
+      <div class="combo-box ${state.step1DropdownOpen?'open':''}" data-combo-toggle>
+        <span class="${selected?'':'combo-placeholder'}">${comboLabel}</span>
+        <span class="chev">${ICONS.chev}</span>
+      </div>
+      ${state.step1DropdownOpen ? `<div class="combo-list">${optionsHtml}</div>` : ''}
+    </div>
+    ${detailsHtml}
+  </div>`;
+}
+
+function renderStep2(){
+  let catsHtml = CATEGORIES.map(cat => {
+    const count = itemCountForCat(cat);
+    const open = state.openCat === cat.key;
+    const itemsHtml = cat.items.map(it => renderItemRow(it)).join('');
+    const legend = cat.key==='manos' ? `<p style="font-size:11.5px; color:var(--text-soft); margin:6px 4px 2px;"><span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--orange); margin-right:5px;"></span>M y L son las tallas más usadas.</p>` : '';
+    return `
+    <div class="cat ${open?'open':''}" data-catkey="${cat.key}">
+      <div class="cat-head" data-toggle-cat="${cat.key}">
+        <div class="cat-icon">${ICONS[cat.icon]}</div>
+        <div class="cat-title">${cat.label}</div>
+        <div class="cat-count ${count>0?'has':''}">${count}</div>
+        <div class="chev">${ICONS.chev}</div>
+      </div>
+      <div class="cat-body">${legend}${itemsHtml}</div>
+    </div>`;
+  }).join('');
+
+  const missing = missingTallaItems();
+  const missingHtml = missing.length>0 ? `<div class="hint-banner" style="border-left-color:var(--orange); background:#FFF4E5; color:#8A5300;"><span>Falta indicar la talla de: <b>${missing.join(', ')}</b>. No podrás continuar hasta completarla.</span></div>` : '';
+
+  return `
+  <div class="card" style="padding-bottom:8px;">
+    <h2 class="step-title">EPP a entregar</h2>
+    <p class="step-desc">Marca cada equipo que se entrega en esta fecha. Total seleccionado: <b>${totalSelected()}</b>.</p>
+    ${missingHtml}
+  </div>
+  ${catsHtml}
+  <div class="card">
+    <div class="field" style="margin-bottom:0;">
+      <label>Otros (especificar)</label>
+      <textarea id="in_otros" placeholder="Ej. Arnés de seguridad, línea de vida...">${state.otros}</textarea>
+    </div>
+  </div>`;
+}
+
+const COMMON_SIZES = ['M','L'];
+function renderItemRow(it){
+  const st = state.items[it.id] || {checked:false, talla:''};
+  let tallaHtml = '';
+  if(st.checked && it.talla){
+    if(Array.isArray(it.talla)){
+      tallaHtml = `<div class="talla-select">${it.talla.map(t=>`<div class="talla-btn ${st.talla===t?'sel':''} ${COMMON_SIZES.includes(t)?'common':''}" data-talla-btn="${it.id}" data-talla-val="${t}">${t}</div>`).join('')}</div>`;
+    } else {
+      tallaHtml = `<input class="talla-input" placeholder="Talla" data-talla-input="${it.id}" value="${st.talla||''}">`;
+    }
+  }
+  return `
+  <div class="item-row">
+    <div class="item-row-main">
+      <div class="checkbox ${st.checked?'checked':''}" data-check="${it.id}">${ICONS.check}</div>
+      <div class="item-label" data-check-label="${it.id}">${it.label}</div>
+    </div>
+    ${tallaHtml}
+  </div>`;
+}
+
+function renderStep3(){
+  return `
+  <div class="card">
+    <h2 class="step-title">Tipo de entrega</h2>
+    <p class="step-desc">Selecciona el motivo de esta entrega.</p>
+    <div class="pillgroup">
+      <div class="pill ${state.tipo_entrega==='primera'?'sel':''}" data-tipo="primera">Primera<br>entrega</div>
+      <div class="pill ${state.tipo_entrega==='renovacion'?'sel':''}" data-tipo="renovacion">Renovación</div>
+      <div class="pill ${state.tipo_entrega==='servicio'?'sel':''}" data-tipo="servicio">Por<br>servicio</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="field" style="margin-bottom:0;">
+      <label>Fecha de entrega <span class="req">*</span></label>
+      <input type="date" id="in_fecha" value="${state.fecha}">
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="step-title" style="font-size:18px;">Compromiso del colaborador</h2>
+    <div class="declaration">Quien suscribe declara recibir a su entera conformidad los Equipos de Protección Personal (EPP) descritos, que serán usados para su propia protección y en cumplimiento de la normativa vigente. Se compromete a utilizarlos durante su jornada de trabajo, cuidarlos y, al terminar su relación con ${COMPANY.razon}, devolverlos.</div>
+    <label style="display:block; font-size:12.5px; font-weight:600; color:var(--text-soft); margin-bottom:6px; text-transform:uppercase; letter-spacing:.3px;">Firma del colaborador <span class="req">*</span></label>
+    <div class="sig-box">
+      <canvas id="sigCanvas"></canvas>
+      <div class="sig-placeholder" id="sigPlaceholder">Firma aquí con el dedo o el mouse</div>
+      <div class="sig-clear" id="sigClear">Borrar</div>
+    </div>
+  </div>`;
+}
+
+function renderStep4(){
+  const w = state.worker;
+  let catsSummary = '';
+  CATEGORIES.forEach(cat=>{
+    const sel = cat.items.filter(it => state.items[it.id] && state.items[it.id].checked);
+    if(sel.length===0) return;
+    catsSummary += `<div class="summary-cat">${cat.label}</div>`;
+    sel.forEach(it=>{
+      const st = state.items[it.id];
+      const tallaTxt = st.talla ? ` · Talla ${st.talla}` : '';
+      catsSummary += `<span class="chip">${it.label}${tallaTxt}</span>`;
+    });
+  });
+  if(state.otros.trim()){
+    catsSummary += `<div class="summary-cat">Otros</div><span class="chip">${state.otros}</span>`;
+  }
+  return `
+  <div class="card">
+    <h2 class="step-title">Confirmar registro</h2>
+    <p class="step-desc">Revisa los datos antes de guardar. Este registro quedará visible en el historial compartido.</p>
+    <div class="summary-row"><span class="k">Trabajador</span><span class="v">${w.nombre}</span></div>
+    <div class="summary-row"><span class="k">DNI</span><span class="v">${w.dni}</span></div>
+    <div class="summary-row"><span class="k">Cargo</span><span class="v">${w.cargo}</span></div>
+    <div class="summary-row"><span class="k">Sede</span><span class="v">${w.sede}</span></div>
+    <div class="summary-row"><span class="k">Tipo de entrega</span><span class="v">${tipoEntregaLabel(state.tipo_entrega)}</span></div>
+    <div class="summary-row"><span class="k">Fecha</span><span class="v">${fmtDate(state.fecha)}</span></div>
+    <div class="summary-row"><span class="k">Total EPP</span><span class="v">${totalSelected()}</span></div>
+  </div>
+  <div class="card">
+    ${catsSummary || '<p style="color:var(--text-soft); font-size:13px;">No se seleccionó ningún EPP.</p>'}
+  </div>
+  <div class="card">
+    <label style="display:block; font-size:12.5px; font-weight:600; color:var(--text-soft); margin-bottom:8px; text-transform:uppercase;">Firma registrada</label>
+    ${state.signatureData ? `<img src="${state.signatureData}" class="sig-thumb">` : '<p style="font-size:13px; color:var(--text-soft);">Sin firma</p>'}
+  </div>`;
+}
+
+function renderSuccess(){
+  let syncHtml = '';
+  if(state.syncStatus==='syncing'){
+    syncHtml = `<div class="sync-badge syncing">Sincronizando con tu Hoja de Google…</div>`;
+  } else if(state.syncStatus==='ok'){
+    syncHtml = `<div class="sync-badge ok">Sincronizado con tu Hoja de Google</div>`;
+  } else if(state.syncStatus==='error'){
+    syncHtml = `<div class="sync-badge error">No se pudo sincronizar con la Hoja de Google${state.syncMessage?': '+state.syncMessage:''}. Tus datos están guardados igual; puedes exportarlos a Excel manualmente desde Historial.</div>`;
+  }
+  return `
+  <div class="view">
+    <div class="success">
+      <div class="success-icon">${ICONS.success}</div>
+      <h2>Registro guardado</h2>
+      <p>Se registró la entrega de EPP para <b>${state.worker.nombre}</b>.</p>
+      ${syncHtml}
+    </div>
+    <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn btn-primary" id="btnAnotherDelivery">Registrar otra entrega para este colaborador</button>
+      <button class="btn btn-ghost" style="flex:none; width:100%;" id="btnNewWorker">Entregar EPPs a otro colaborador</button>
+      <button class="btn btn-ghost" style="flex:none; width:100%;" id="btnGoHistorial">Ver historial</button>
+    </div>
+  </div>`;
+}
+
+function renderFooterNav(){
+  const nextDisabled = !canAdvance();
+  let leftBtn = state.step>1 ? `<button class="btn btn-ghost" id="btnBack">Atrás</button>` : '';
+  let rightLabel = state.step<4 ? 'Continuar' : 'Guardar registro';
+  return `
+  <div class="footer-nav">
+    ${leftBtn}
+    <button class="btn btn-primary" id="btnNext" ${nextDisabled?'disabled':''}>${rightLabel}</button>
+  </div>`;
+}
+
+function missingTallaItems(){
+  const missing = [];
+  CATEGORIES.forEach(cat=>{
+    cat.items.forEach(it=>{
+      const st = state.items[it.id];
+      if(st && st.checked && it.talla && (!st.talla || !String(st.talla).trim())){
+        missing.push(it.label);
+      }
+    });
+  });
+  return missing;
+}
+
+function canAdvance(){
+  if(state.step===1){
+    return !!state.worker.dni;
+  }
+  if(state.step===2){
+    if(totalSelected() === 0 && state.otros.trim().length === 0) return false;
+    return missingTallaItems().length === 0;
+  }
+  if(state.step===3){
+    return !!state.tipo_entrega && !!state.fecha && !!state.signatureData;
+  }
+  return true;
+}
+
+/* ============ HISTORIAL VIEW ============ */
+function historialListHtml(){
+  if(historialCache===null){
+    return `<div class="loading">Cargando historial…</div>`;
+  }
+  const filtered = historialCache.filter(r=>{
+    if(!searchTerm) return true;
+    const s = searchTerm.toLowerCase();
+    return r.worker.nombre.toLowerCase().includes(s) || r.worker.dni.includes(s);
+  });
+  if(filtered.length===0){
+    return `<div class="empty-state">${ICONS.empty}<div>No hay registros${searchTerm?' que coincidan':' todavía'}.</div></div>`;
+  }
+  return filtered.map(r=>{
+    const items = flattenRecordItems(r);
+    const tagsHtml = items.slice(0,6).map(t=>`<span class="chip">${t}</span>`).join('') + (items.length>6?`<span class="chip">+${items.length-6} más</span>`:'');
+    return `
+    <div class="rec-card">
+      <div class="rec-top">
+        <div>
+          <div class="rec-name">${r.worker.nombre}</div>
+          <div class="rec-meta">DNI ${r.worker.dni} · ${r.worker.cargo} · ${r.worker.sede}</div>
+        </div>
+        <div class="rec-date">${fmtDate(r.fecha)}</div>
+      </div>
+      <div class="rec-meta" style="margin-top:6px;">${tipoEntregaLabel(r.tipo_entrega)} · ${items.length} EPP</div>
+      <div class="rec-tags">${tagsHtml}</div>
+      <div class="rec-actions">
+        <button data-view-rec="${r.id}">${iconInline('eye')} Ver detalle</button>
+        <button class="danger" data-del-rec="${r.id}">${iconInline('trash')} Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function bindHistResultHandlers(){
+  document.querySelectorAll('[data-view-rec]').forEach(el=>{
+    el.onclick = ()=> showRecordDetail(el.dataset.viewRec);
+  });
+  document.querySelectorAll('[data-del-rec]').forEach(el=>{
+    el.onclick = async ()=>{
+      if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+      const id = el.dataset.delRec;
+      await deleteRecord(id);
+      toast('Registro eliminado');
+      refreshHistorial();
+    };
+  });
+}
+
+function renderHistorialView(){
+  const sheetStatusHtml = sheetUrl
+    ? `<div class="sync-badge ok" style="display:block; margin:0;">Conectado a tu Hoja de Google</div>`
+    : `<div class="sync-badge error" style="display:block; margin:0;">Sin conectar. Ve al Menú principal para conectar tu Hoja de Google.</div>`;
+  return `
+  <div class="view">
+    <div class="card">
+      <h2 class="step-title" style="font-size:18px;">Google Sheets</h2>
+      <p class="step-desc">Cada entrega y colaborador que guardes aquí se sincroniza automáticamente con tu Hoja de Google.</p>
+      ${sheetStatusHtml}
+    </div>
+    <div class="search-bar">
+      <input type="text" id="in_search" placeholder="Buscar por nombre o DNI…" value="${searchTerm}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="icon-btn" id="btnRefreshHist" title="Actualizar desde la hoja">${ICONS.refresh}</div>
+      <div class="icon-btn" id="btnExport" title="Exportar a Excel">${ICONS.download}</div>
+    </div>
+    <div id="histResults">${historialListHtml()}</div>
+  </div>`;
+}
+
+function iconInline(name){ return `<span style="display:inline-flex; width:12px; height:12px; vertical-align:-1px;">${ICONS[name]}</span>`; }
+
+function buildItemRows(record){
+  const rows = [];
+  CATEGORIES.forEach(cat=>{
+    cat.items.forEach(it=>{
+      const st = record.items[it.id];
+      if(st && st.checked){ rows.push({ categoria: cat.label, item: it.label, talla: st.talla || '' }); }
+    });
+  });
+  if(record.otros && record.otros.trim()){ rows.push({ categoria: 'Otros', item: record.otros.trim(), talla: '' }); }
+  return rows;
+}
+
+function getItemRows(r){
+  if(r._itemRows) return r._itemRows;
+  if(r.items) return buildItemRows(r);
+  return [];
+}
+
+function flattenRecordItems(r){
+  return getItemRows(r).map(x => x.item + (x.talla ? ' ('+x.talla+')' : ''));
+}
+
+async function refreshHistorial(){
+  historialCache = null; render();
+  const recs = await fetchAllRecords();
+  historialCache = recs;
+  render();
+}
+
+/* ============ DASHBOARD ============ */
+function getAllItemRowsFlat(){
+  const out = [];
+  (historialCache||[]).forEach(r=>{
+    getItemRows(r).forEach(x=>{
+      out.push({
+        categoria: x.categoria || '—', item: x.item || '—', talla: x.talla || '',
+        id: r.id, sede: r.worker.sede || '—', cargo: r.worker.cargo || '—',
+        dni: r.worker.dni, nombre: r.worker.nombre,
+        fecha: r.fecha || '', tipo_entrega: tipoEntregaLabel(r.tipo_entrega)
+      });
+    });
+  });
+  return out;
+}
+
+function dashFilteredRows(){
+  const f = state.dashFilters;
+  let rows = getAllItemRowsFlat();
+  if(f.sede) rows = rows.filter(r=>r.sede===f.sede);
+  if(f.categoria) rows = rows.filter(r=>r.categoria===f.categoria);
+  if(f.desde) rows = rows.filter(r=> r.fecha && r.fecha.slice(0,10) >= f.desde);
+  if(f.hasta) rows = rows.filter(r=> r.fecha && r.fecha.slice(0,10) <= f.hasta);
+  return rows;
+}
+
+function countBy(rows, key){
+  const counts = {};
+  rows.forEach(r=>{ const k = r[key] || '—'; counts[k] = (counts[k]||0) + 1; });
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+}
+
+function monthlyTrend(rows){
+  const counts = {};
+  rows.forEach(r=>{ const m = (r.fecha||'').slice(0,7); if(!m) return; counts[m] = (counts[m]||0) + 1; });
+  return Object.entries(counts).sort((a,b)=>a[0].localeCompare(b[0]));
+}
+
+function monthLabel(ym){
+  if(!ym) return '—';
+  const [y,m] = ym.split('-');
+  const names = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const idx = parseInt(m,10) - 1;
+  return (names[idx]||'—') + ' ' + y;
+}
+
+function getWeekStart(dateStr){
+  if(!dateStr) return null;
+  const d = new Date(dateStr.slice(0,10) + 'T00:00:00');
+  if(isNaN(d.getTime())) return null;
+  const day = d.getDay(); // 0=domingo .. 6=sábado
+  const diff = (day === 0 ? -6 : 1 - day); // retrocede hasta el lunes
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0,10);
+}
+
+function weeklyTrend(rows, lastN){
+  const counts = {};
+  rows.forEach(r=>{
+    const ws = getWeekStart(r.fecha);
+    if(!ws) return;
+    counts[ws] = (counts[ws]||0) + 1;
+  });
+  const sorted = Object.entries(counts).sort((a,b)=>a[0].localeCompare(b[0]));
+  return lastN ? sorted.slice(-lastN) : sorted;
+}
+
+function weekLabel(ws){
+  if(!ws) return '—';
+  const d = new Date(ws + 'T00:00:00');
+  if(isNaN(d.getTime())) return '—';
+  const names = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  return d.getDate() + ' ' + names[d.getMonth()];
+}
+
+function topColaboradores(rows, n){
+  const counts = {}, names = {};
+  rows.forEach(r=>{
+    const key = r.dni || '—';
+    counts[key] = (counts[key]||0) + 1;
+    names[key] = r.nombre || key;
+  });
+  return Object.entries(counts)
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0, n)
+    .map(([dni,count])=>[names[dni] || dni, count]);
+}
+
+function topColaboradoresPorCategoria(rows, n){
+  const byDni = {};
+  rows.forEach(r=>{
+    const key = r.dni || '—';
+    if(!byDni[key]) byDni[key] = { nombre: r.nombre || key, total:0, cats:{} };
+    byDni[key].total++;
+    byDni[key].cats[r.categoria] = (byDni[key].cats[r.categoria]||0) + 1;
+  });
+  return Object.values(byDni).sort((a,b)=>b.total-a.total).slice(0,n);
+}
+
+function topColaboradoresItemDetail(rows, nColabs){
+  const top = topColaboradoresPorCategoria(rows, nColabs);
+  const topNames = new Set(top.map(d=>d.nombre));
+  const filtered = rows.filter(r=> topNames.has(r.nombre));
+  const byKey = {};
+  filtered.forEach(r=>{
+    const key = r.nombre + '|' + r.item + '|' + (r.talla||'');
+    if(!byKey[key]) byKey[key] = { nombre:r.nombre, item:r.item, talla:r.talla||'', count:0 };
+    byKey[key].count++;
+  });
+  return Object.values(byKey).sort((a,b)=> a.nombre.localeCompare(b.nombre,'es') || b.count-a.count);
+}
+
+function topColaboradoresItemChart(rows, nColabs){
+  const detail = topColaboradoresItemDetail(rows, nColabs);
+  const byItem = {};
+  detail.forEach(d=>{ byItem[d.item] = (byItem[d.item]||0) + d.count; });
+  return Object.entries(byItem).sort((a,b)=>b[1]-a[1]).slice(0,10);
+}
+
+function renderStackedColabBars(data){
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const max = Math.max(...data.map(d=>d.total));
+  const catsUsed = new Set();
+  const rowsHtml = data.map(d=>{
+    const widthPct = Math.max((d.total/max*100), 4);
+    const segs = Object.entries(d.cats).sort((a,b)=>b[1]-a[1]).map(([cat,count])=>{
+      catsUsed.add(cat);
+      const pct = (count/d.total*100);
+      return `<div style="width:${pct}%; background:${getCategoryColor(cat)};" title="${cat}: ${count}"></div>`;
+    }).join('');
+    return `
+    <div class="hbar-row">
+      <div class="hbar-top"><span class="hbar-label">${d.nombre}</span><span class="hbar-value">${d.total}</span></div>
+      <div class="hbar-track"><div style="width:${widthPct}%; height:100%; display:flex;">${segs}</div></div>
+    </div>`;
+  }).join('');
+  const legend = Array.from(catsUsed).map(cat=>`
+    <span class="chip" style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; border-radius:50%; background:${getCategoryColor(cat)}; display:inline-block;"></span>${cat}</span>`).join('');
+  return `<div>${rowsHtml}</div><div style="margin-top:12px;">${legend}</div>`;
+}
+
+function shortName(fullName){
+  const parts = (fullName||'').trim().split(/\s+/).filter(Boolean);
+  if(parts.length <= 2) return parts.join(' ');
+  // Convención DNI: [apellido1] [apellido2] [nombre1] [nombre2...] -> primer apellido + primer nombre
+  return parts[0] + ' ' + parts[2];
+}
+
+function dayOfWeekLabel(dateStr){
+  if(!dateStr) return '—';
+  const d = new Date(dateStr.slice(0,10) + 'T00:00:00');
+  if(isNaN(d.getTime())) return '—';
+  const names = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  return names[d.getDay()];
+}
+
+function daysBetween(d1, d2){
+  const a = new Date(d1.slice(0,10) + 'T00:00:00');
+  const b = new Date(d2.slice(0,10) + 'T00:00:00');
+  if(isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+  return Math.round((b - a) / (1000*60*60*24));
+}
+
+function colaboradorItemIntervals(rows){
+  const byKey = {};
+  rows.forEach(r=>{
+    if(!r.fecha || !r.item) return;
+    const key = r.dni + '|' + r.item;
+    if(!byKey[key]) byKey[key] = { dni: r.dni, nombre: r.nombre, item: r.item, fechas: new Set() };
+    byKey[key].fechas.add(r.fecha);
+  });
+
+  // Solo combinaciones colaborador+EPP con 2 o más entregas (para poder comparar fechas)
+  const groups = Object.values(byKey)
+    .map(c => ({ ...c, fechas: Array.from(c.fechas).sort((a,b)=>a.localeCompare(b)) }))
+    .filter(c => c.fechas.length >= 2);
+
+  // De todos los EPP repetidos de cada colaborador, nos quedamos con el que más veces se le entregó
+  const bestPerColab = {};
+  groups.forEach(g=>{
+    const cur = bestPerColab[g.dni];
+    if(!cur || g.fechas.length > cur.fechas.length){ bestPerColab[g.dni] = g; }
+  });
+
+  const result = [];
+  Object.values(bestPerColab).forEach(c=>{
+    let prev = null;
+    c.fechas.forEach((fecha, idx)=>{
+      result.push({
+        nombre: c.nombre, item: c.item, entregaNum: idx+1, totalEntregas: c.fechas.length,
+        fecha, dia: dayOfWeekLabel(fecha), semana: getWeekStart(fecha),
+        diasDesdeAnterior: prev ? daysBetween(prev, fecha) : null
+      });
+      prev = fecha;
+    });
+  });
+  return result.sort((a,b)=> b.totalEntregas - a.totalEntregas || a.nombre.localeCompare(b.nombre,'es') || a.fecha.localeCompare(b.fecha));
+}
+
+function renderIntervalTable(data){
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Ningún colaborador tiene el mismo EPP entregado más de una vez todavía — este reporte se llena a medida que haya renovaciones.</p>`;
+  const rowsHtml = data.map(d=>{
+    let diasCell = '<span style="color:var(--line);">—</span>';
+    if(d.diasDesdeAnterior !== null){
+      const alerta = d.diasDesdeAnterior < 30;
+      diasCell = `<span style="font-weight:700; ${alerta?'color:var(--orange);':''}">${d.diasDesdeAnterior} días</span>`;
+    }
+    return `
+    <tr>
+      <td style="white-space:nowrap;" title="${d.nombre}">${shortName(d.nombre)}</td>
+      <td style="white-space:nowrap;">${d.item}</td>
+      <td style="text-align:center; white-space:nowrap;">#${d.entregaNum}/${d.totalEntregas}</td>
+      <td style="text-align:center; white-space:nowrap;">${fmtDate(d.fecha)}</td>
+      <td style="text-align:center; white-space:nowrap;">${d.dia}</td>
+      <td style="text-align:center; white-space:nowrap;">${weekLabel(d.semana)}</td>
+      <td style="text-align:center;">${diasCell}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <div style="overflow-x:auto;">
+    <table class="dash-table">
+      <thead><tr>
+        <th>Colaborador</th><th>EPP más repetido</th><th style="text-align:center;">Entrega</th><th style="text-align:center;">Fecha</th>
+        <th style="text-align:center;">Día</th><th style="text-align:center;">Semana</th><th style="text-align:center;">Días desde anterior</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>
+  <p style="font-size:11px; color:var(--text-soft); margin:10px 0 0;"><span style="color:var(--orange); font-weight:700;">●</span> Menos de 30 días desde la entrega anterior — posible renovación muy frecuente. Ordenado por quién más veces repite el mismo EPP.</p>`;
+}
+
+function topColaboradoresMatrix(rows, nColabs, nItems){
+  const top = topColaboradoresPorCategoria(rows, nColabs);
+  const colaboradores = top.map(d=>d.nombre);
+  const colabSet = new Set(colaboradores);
+  const filtered = rows.filter(r=> colabSet.has(r.nombre));
+
+  const itemTotals = {};
+  filtered.forEach(r=>{ itemTotals[r.item] = (itemTotals[r.item]||0) + 1; });
+  const items = Object.entries(itemTotals).sort((a,b)=>b[1]-a[1]).slice(0,nItems).map(e=>e[0]);
+  const itemSet = new Set(items);
+
+  const matrix = {};
+  filtered.forEach(r=>{
+    if(!itemSet.has(r.item)) return;
+    if(!matrix[r.nombre]) matrix[r.nombre] = {};
+    matrix[r.nombre][r.item] = (matrix[r.nombre][r.item]||0) + 1;
+  });
+
+  return { colaboradores, items, matrix };
+}
+
+function renderColabMatrix(data){
+  const { colaboradores, items, matrix } = data;
+  if(colaboradores.length===0 || items.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const headerCells = items.map(it=>`<th style="text-align:center;">${it}</th>`).join('');
+  const rowsHtml = colaboradores.map(nombre=>{
+    const row = matrix[nombre] || {};
+    let total = 0;
+    const cells = items.map(it=>{
+      const v = row[it] || 0;
+      total += v;
+      return `<td style="text-align:center; ${v?'font-weight:700;':'color:var(--line);'}">${v || '·'}</td>`;
+    }).join('');
+    return `<tr><td style="white-space:nowrap;" title="${nombre}">${shortName(nombre)}</td>${cells}<td style="text-align:center; font-weight:800; background:var(--bg);">${total}</td></tr>`;
+  }).join('');
+  return `
+  <div style="overflow-x:auto;">
+    <table class="dash-table">
+      <thead><tr><th>Colaborador</th>${headerCells}<th style="text-align:center;">Total</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>`;
+}
+
+
+function renderHBars(data, colorFn){
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const max = Math.max(...data.map(d=>d[1]));
+  return data.map((d,i)=>{
+    const pct = Math.max((d[1]/max*100), 4);
+    const color = colorFn ? colorFn(d[0]) : CHART_COLORS[i % CHART_COLORS.length];
+    return `
+    <div class="hbar-row">
+      <div class="hbar-top"><span class="hbar-label">${d[0]}</span><span class="hbar-value">${d[1]}</span></div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${pct}%; background:${color};"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderVBars(data, labelFn){
+  labelFn = labelFn || monthLabel;
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const max = Math.max(...data.map(d=>d[1]));
+  return `<div class="vbar-chart">${data.map(([key,val])=>{
+    const h = Math.max((val/max*100), 4);
+    return `
+    <div class="vbar-col">
+      <div class="vbar-value">${val}</div>
+      <div class="vbar-bar" style="height:${h}%;"></div>
+      <div class="vbar-label">${labelFn(key)}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function svgDonut(colored){
+  const size = 140;
+  const total = colored.reduce((s,d)=>s+d[1],0) || 1;
+  const r = size/2 - 16, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
+  let offset = 0;
+  const segs = colored.map(d=>{
+    const len = (d[1]/total) * circ;
+    const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d[2]}" stroke-width="20" stroke-dasharray="${len.toFixed(2)} ${(circ-len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    offset += len;
+    return seg;
+  }).join('');
+  return `<svg class="donut-svg" viewBox="0 0 ${size} ${size}">${segs}</svg>`;
+}
+
+function renderDonutWithLegend(data){
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const colored = data.map((d,i)=>[d[0], d[1], CHART_COLORS[i % CHART_COLORS.length]]);
+  const total = colored.reduce((s,d)=>s+d[1],0) || 1;
+  const legend = colored.map(d=>`
+    <div class="legend-row">
+      <div class="legend-dot" style="background:${d[2]};"></div>
+      <div class="legend-label">${d[0]}</div>
+      <div class="legend-value">${d[1]} · ${Math.round(d[1]/total*100)}%</div>
+    </div>`).join('');
+  return `<div class="donut-wrap">${svgDonut(colored)}<div class="donut-legend">${legend}</div></div>`;
+}
+
+function renderKpis(rows){
+  const ids = new Set(rows.map(r=>r.id));
+  const dnis = new Set(rows.map(r=>r.dni));
+  const fechas = rows.map(r=>r.fecha).filter(Boolean).slice().sort();
+  const ultima = fechas.length ? fmtDate(fechas[fechas.length-1]) : '—';
+  return `
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-value">${ids.size}</div><div class="kpi-label">Entregas</div></div>
+    <div class="kpi-card"><div class="kpi-value">${rows.length}</div><div class="kpi-label">EPPs entregados</div></div>
+    <div class="kpi-card"><div class="kpi-value">${dnis.size}</div><div class="kpi-label">Colaboradores</div></div>
+    <div class="kpi-card"><div class="kpi-value" style="font-size:15px;">${ultima}</div><div class="kpi-label">Última entrega</div></div>
+  </div>`;
+}
+
+function renderDashboardView(){
+  if(historialCache===null){
+    return `<div class="view"><div class="loading">Cargando datos del dashboard…</div></div>`;
+  }
+  const allRows = getAllItemRowsFlat();
+  if(allRows.length===0){
+    return `<div class="view"><div class="empty-state">${ICONS.empty}<div>Todavía no hay entregas registradas para mostrar aquí.</div></div></div>`;
+  }
+  const sedes = Array.from(new Set(allRows.map(r=>r.sede).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es'));
+  const categorias = Array.from(new Set(allRows.map(r=>r.categoria).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es'));
+  const f = state.dashFilters;
+
+  const filterHtml = `
+  <div class="card full-width">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+      <h2 class="step-title" style="font-size:18px; margin:0;">Filtros</h2>
+      <div class="icon-btn" id="btnRefreshDash" title="Actualizar desde la hoja">${ICONS.refresh}</div>
+    </div>
+    <p class="step-desc">Filtra el dashboard por sede, categoría o rango de fechas.</p>
+    <div class="grid2">
+      <div class="field">
+        <label>Sede</label>
+        <select id="dash_sede">
+          <option value="">Todas</option>
+          ${sedes.map(s=>`<option value="${s}" ${f.sede===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Categoría</label>
+        <select id="dash_categoria">
+          <option value="">Todas</option>
+          ${categorias.map(c=>`<option value="${c}" ${f.categoria===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Desde</label>
+        <input type="date" id="dash_desde" value="${f.desde||''}">
+      </div>
+      <div class="field">
+        <label>Hasta</label>
+        <input type="date" id="dash_hasta" value="${f.hasta||''}">
+      </div>
+    </div>
+    <button class="btn btn-ghost" id="btnClearDashFilters" style="width:100%; flex:none;">Limpiar filtros</button>
+  </div>`;
+
+  const rows = dashFilteredRows();
+  if(rows.length===0){
+    return `<div class="view">${filterHtml}<div class="empty-state">${ICONS.empty}<div>Ningún dato coincide con estos filtros.</div></div></div>`;
+  }
+
+  const topItems = countBy(rows,'item').slice(0,8);
+  const porCategoria = countBy(rows,'categoria');
+  const porTipo = countBy(rows,'tipo_entrega');
+  const tendenciaMensual = monthlyTrend(rows);
+  const tendenciaSemanal = weeklyTrend(rows, 12);
+
+  let colabPanelBody = '';
+  if(state.dashColabView === 'item'){
+    colabPanelBody = renderHBars(topColaboradoresItemChart(rows,8));
+  } else if(state.dashColabView === 'detalle'){
+    colabPanelBody = renderColabMatrix(topColaboradoresMatrix(rows,8,8));
+  } else {
+    colabPanelBody = renderStackedColabBars(topColaboradoresPorCategoria(rows,8));
+  }
+
+  return `
+  <div class="view">
+    ${filterHtml}
+    ${renderKpis(rows)}
+    <div class="dash-grid">
+      <div class="card full-width">
+        <h2 class="step-title" style="font-size:17px;">EPPs más entregados</h2>
+        ${renderHBars(topItems)}
+      </div>
+      <div class="card full-width">
+        <h2 class="step-title" style="font-size:17px;">Consumo por categoría</h2>
+        ${renderHBars(porCategoria, getCategoryColor)}
+      </div>
+      <div class="card full-width" style="grid-column:1/-1;">
+        <h2 class="step-title" style="font-size:17px;">Colaboradores que más EPP consumen</h2>
+        <div class="pillgroup" style="margin-bottom:14px;">
+          <div class="pill ${state.dashColabView==='categoria'?'sel':''}" data-colabview="categoria">Por categoría</div>
+          <div class="pill ${state.dashColabView==='item'?'sel':''}" data-colabview="item">Por EPPs</div>
+          <div class="pill ${state.dashColabView==='detalle'?'sel':''}" data-colabview="detalle">Matriz colaborador × EPP</div>
+        </div>
+        ${colabPanelBody}
+      </div>
+      <div class="card full-width">
+        <h2 class="step-title" style="font-size:17px;">Tipo de entrega</h2>
+        ${renderDonutWithLegend(porTipo)}
+      </div>
+      <div class="card full-width">
+        <h2 class="step-title" style="font-size:17px;">Tendencia mensual</h2>
+        ${renderVBars(tendenciaMensual, monthLabel)}
+      </div>
+      <div class="card full-width" style="grid-column:1/-1;">
+        <h2 class="step-title" style="font-size:17px;">Tendencia semanal (últimas 12 semanas)</h2>
+        ${renderVBars(tendenciaSemanal, weekLabel)}
+      </div>
+      <div class="card full-width" style="grid-column:1/-1;">
+        <h2 class="step-title" style="font-size:17px;">Frecuencia de renovación por colaborador</h2>
+        <p class="step-desc">Para cada colaborador, el EPP que más veces se le ha repetido, con las fechas y días entre cada entrega.</p>
+        ${renderIntervalTable(colaboradorItemIntervals(rows))}
+      </div>
+    </div>
+  </div>`;
+}
+
+async function exportXlsx(){
+  if(typeof XLSX === 'undefined'){ toast('No se pudo cargar el módulo de Excel'); return; }
+  if(historialCache===null){ toast('Preparando archivo…'); historialCache = await fetchAllRecords(); }
+
+  const regRows = [['ID','Fecha','Trabajador','DNI','Cargo','Sede','Tipo de entrega','Categoría','EPPs','Talla']];
+  historialCache.forEach(r=>{
+    getItemRows(r).forEach(x=>{
+      regRows.push([r.id, r.fecha, r.worker.nombre, r.worker.dni, r.worker.cargo, r.worker.sede, tipoEntregaLabel(r.tipo_entrega), x.categoria, x.item, x.talla]);
+    });
+  });
+
+  const colabRows = [['Nombre','DNI','Cargo','Sede','Nivel','Estado']];
+  Object.entries(workersMap)
+    .sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre,'es'))
+    .forEach(([dni,v])=>{ colabRows.push([v.nombre, dni, v.cargo, v.sede, v.nivel||'', v.estado==='activo'?'Activo':'Inactivo']); });
+
+  const wb = XLSX.utils.book_new();
+  const wsReg = XLSX.utils.aoa_to_sheet(regRows);
+  wsReg['!cols'] = [{wch:14},{wch:12},{wch:26},{wch:11},{wch:16},{wch:14},{wch:15},{wch:20},{wch:30},{wch:10}];
+  const wsColab = XLSX.utils.aoa_to_sheet(colabRows);
+  wsColab['!cols'] = [{wch:26},{wch:11},{wch:16},{wch:14},{wch:12},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, wsReg, 'Registros');
+  XLSX.utils.book_append_sheet(wb, wsColab, 'Colaboradores');
+  XLSX.writeFile(wb, 'registro_epp.xlsx');
+}
+
+function colabListHtml(){
+  const all = Object.entries(workersMap).map(([dni,v])=>({dni,...v}));
+  const term = (state.colabSearch||'').toLowerCase();
+  let filtered = all.filter(r=>{
+    if(state.colabFilter==='activos' && r.estado!=='activo') return false;
+    if(state.colabFilter==='inactivos' && r.estado!=='inactivo') return false;
+    if(!term) return true;
+    return r.nombre.toLowerCase().includes(term) || r.dni.includes(term) || (r.nivel||'').toLowerCase().includes(term) || (r.sede||'').toLowerCase().includes(term);
+  });
+  filtered.sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+
+  if(filtered.length===0){
+    return `<div class="empty-state">${ICONS.empty}<div>No hay colaboradores${term?' que coincidan':''}.</div></div>`;
+  }
+  return filtered.map(r=>`
+    <div class="rec-card">
+      <div class="rec-top">
+        <div>
+          <div class="rec-name">${r.nombre}</div>
+          <div class="rec-meta">DNI ${r.dni} · ${r.cargo||'—'} · ${r.sede||'—'}${r.nivel?' · Nivel '+r.nivel:''}</div>
+        </div>
+        <span class="status-badge ${r.estado}">${r.estado==='activo'?'Activo':'Inactivo'}</span>
+      </div>
+      <div class="rec-actions">
+        <button data-edit-colab="${r.dni}">${iconInline('pencil')} Editar</button>
+        <button data-toggle-estado="${r.dni}">${iconInline('power')} ${r.estado==='activo'?'Desactivar':'Activar'}</button>
+        <button class="danger" data-del-colab="${r.dni}">${iconInline('trash')} Eliminar</button>
+      </div>
+    </div>`).join('');
+}
+
+function bindColabResultHandlers(){
+  document.querySelectorAll('[data-edit-colab]').forEach(el=>{
+    el.onclick = ()=>{
+      const dni = el.dataset.editColab;
+      const w = workersMap[dni];
+      state.colabForm = { mode:'edit', dni, nombre:w.nombre, cargo:w.cargo, sede:w.sede, nivel:w.nivel||'', estado:w.estado||'activo', origDni:dni };
+      render();
+    };
+  });
+  document.querySelectorAll('[data-toggle-estado]').forEach(el=>{
+    el.onclick = async ()=>{
+      const dni = el.dataset.toggleEstado;
+      try{
+        await toggleEstadoColaborador(dni);
+      }catch(e){
+        toast('No se pudo actualizar: ' + (e.message || 'error desconocido'));
+      }
+      document.getElementById('colabResults').innerHTML = colabListHtml();
+      bindColabResultHandlers();
+    };
+  });
+  document.querySelectorAll('[data-del-colab]').forEach(el=>{
+    el.onclick = async ()=>{
+      if(!confirm('¿Eliminar este colaborador? No se borrarán sus entregas ya registradas.')) return;
+      const dni = el.dataset.delColab;
+      await deleteColaborador(dni);
+      toast('Colaborador eliminado');
+      document.getElementById('colabResults').innerHTML = colabListHtml();
+      bindColabResultHandlers();
+    };
+  });
+}
+
+/* ============ COLABORADORES VIEW ============ */
+function renderColaboradoresView(){
+  if(state.colabForm){ return renderColabForm(); }
+
+  const all = Object.values(workersMap);
+  const counts = {
+    activos: all.filter(r=>r.estado==='activo').length,
+    inactivos: all.filter(r=>r.estado==='inactivo').length,
+  };
+
+  return `
+  <div class="view">
+    <div class="colab-toolbar">
+      <input type="text" id="in_colab_search" placeholder="Buscar por nombre o DNI…" value="${state.colabSearch||''}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:1; padding:11px 13px; border:1.5px solid var(--line); border-radius:10px; font-size:16px; background:#fff;">
+      <button class="icon-btn" id="btnRefreshColab" title="Actualizar desde la hoja">${ICONS.refresh}</button>
+      <button class="icon-btn" id="btnExportColab" title="Exportar a Excel">${ICONS.download}</button>
+      <button class="fab-add" id="btnNewColab" title="Nuevo colaborador">${ICONS.plus}</button>
+    </div>
+    <div class="filter-pills">
+      <div class="filter-pill ${state.colabFilter==='todos'?'sel':''}" data-colab-filter="todos">Todos (${all.length})</div>
+      <div class="filter-pill ${state.colabFilter==='activos'?'sel':''}" data-colab-filter="activos">Activos (${counts.activos})</div>
+      <div class="filter-pill ${state.colabFilter==='inactivos'?'sel':''}" data-colab-filter="inactivos">Inactivos (${counts.inactivos})</div>
+    </div>
+    <div id="colabResults">${colabListHtml()}</div>
+  </div>`;
+}
+
+function renderColabForm(){
+  const f = state.colabForm;
+  const isEdit = f.mode==='edit';
+  return `
+  <div class="view">
+    <div class="card">
+      <h2 class="step-title">${isEdit?'Editar colaborador':'Nuevo colaborador'}</h2>
+      <p class="step-desc">${isEdit?'Actualiza los datos del colaborador.':'Registra un colaborador para que aparezca en la lista de selección del formulario.'}</p>
+      <div class="field">
+        <label>DNI <span class="req">*</span></label>
+        <input type="text" id="cf_dni" inputmode="numeric" maxlength="8" placeholder="Ej. 45678912" value="${f.dni}" ${isEdit?'disabled':''}>
+      </div>
+      <div class="field">
+        <label>Nombre y apellidos <span class="req">*</span></label>
+        <input type="text" id="cf_nombre" placeholder="Nombre completo" value="${f.nombre}">
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Ocupación / cargo <span class="req">*</span></label>
+          <input type="text" id="cf_cargo" placeholder="Ej. Mecánico" value="${f.cargo}">
+        </div>
+        <div class="field">
+          <label>Sede <span class="req">*</span></label>
+          <input type="text" id="cf_sede" placeholder="Ej. Taller Lima" value="${f.sede}">
+        </div>
+      </div>
+      <div class="field">
+        <label>Nivel</label>
+        <input type="text" id="cf_nivel" placeholder="Ej. I, II, III / Operativo, Supervisor…" value="${f.nivel||''}">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Estado</label>
+        <div class="pillgroup">
+          <div class="pill ${f.estado==='activo'?'sel':''}" data-colab-estado="activo">Activo</div>
+          <div class="pill ${f.estado==='inactivo'?'sel':''}" data-colab-estado="inactivo">Inactivo</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer-nav">
+    <button class="btn btn-ghost" id="btnCancelColab">Cancelar</button>
+    <button class="btn btn-primary" id="btnSaveColab">Guardar colaborador</button>
+  </div>`;
+}
+
+/* ============ GOOGLE SHEETS SYNC (Apps Script Web App) ============ */
+function loadSheetUrl(){
+  sheetUrl = loadSheetUrlFromBrowser();
+}
+
+function saveSheetUrl(url){
+  sheetUrl = url;
+  persistSheetUrlToBrowser(url);
+}
+
+async function sheetFetch(url, opts){
+  const res = await fetch(url, opts);
+  if(!res.ok){ throw new Error('HTTP ' + res.status); }
+  return res.json();
+}
+
+async function testSheetConnection(url){
+  try{
+    const sep = url.includes('?') ? '&' : '?';
+    const json = await sheetFetch(url + sep + 'type=registros');
+    if(json.ok) return {ok:true, count:(json.rows||[]).length};
+    return {ok:false, message:json.error || 'Respuesta inesperada'};
+  }catch(e){
+    return {ok:false, message:e.message};
+  }
+}
+
+async function syncRegistroToSheet(record){
+  if(!sheetUrl) return {ok:false, message:'No hay hoja de Google conectada'};
+  const itemRows = buildItemRows(record);
+  if(itemRows.length === 0) return {ok:false, message:'No hay EPP seleccionados para guardar'};
+  const rows = itemRows.map(x => ({
+    'ID': record.id,
+    'Fecha': record.fecha,
+    'Trabajador': record.worker.nombre,
+    'DNI': record.worker.dni,
+    'Cargo': record.worker.cargo,
+    'Sede': record.worker.sede,
+    'Tipo de entrega': tipoEntregaLabel(record.tipo_entrega),
+    'Categoría': x.categoria,
+    'EPPs': x.item,
+    'Talla': x.talla
+  }));
+  try{
+    const json = await sheetFetch(sheetUrl, { method:'POST', body: JSON.stringify({type:'registro', action:'append', rows}) });
+    return json.ok ? {ok:true} : {ok:false, message:json.error || 'Respuesta inesperada'};
+  }catch(e){
+    return {ok:false, message:e.message};
+  }
+}
+
+async function deleteRegistroFromSheet(id){
+  if(!sheetUrl) return;
+  try{ await sheetFetch(sheetUrl, {method:'POST', body: JSON.stringify({type:'registro', action:'delete', id})}); }
+  catch(e){ console.error('sheet delete registro error', e); }
+}
+
+async function syncColaboradorToSheet(w){
+  if(!sheetUrl) return {ok:false, message:'No hay hoja de Google conectada'};
+  const data = { 'DNI': w.dni, 'Nombre': w.nombre, 'Cargo': w.cargo, 'Sede': w.sede, 'Nivel': w.nivel||'', 'Estado': w.estado==='activo'?'Activo':'Inactivo' };
+  try{
+    const json = await sheetFetch(sheetUrl, { method:'POST', body: JSON.stringify({type:'colaborador', action:'upsert', data}) });
+    return json.ok ? {ok:true} : {ok:false, message:json.error || 'Respuesta inesperada'};
+  }catch(e){
+    return {ok:false, message:e.message};
+  }
+}
+
+async function deleteColaboradorFromSheet(dni){
+  if(!sheetUrl) return;
+  try{ await sheetFetch(sheetUrl, {method:'POST', body: JSON.stringify({type:'colaborador', action:'delete', dni})}); }
+  catch(e){ console.error('sheet delete colaborador error', e); }
+}
+
+/* ============ SIGNATURE PAD ============ */
+let sigCtx=null, sigDrawing=false, sigHasContent=false, sigMouseUpHandler=null;
+function initSignaturePad(){
+  const canvas = document.getElementById('sigCanvas');
+  if(!canvas) return;
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  sigCtx = canvas.getContext('2d');
+  sigCtx.scale(ratio, ratio);
+  sigCtx.lineWidth = 2.4;
+  sigCtx.lineCap = 'round';
+  sigCtx.strokeStyle = '#1B2027';
+  sigHasContent = !!state.signatureData;
+  document.getElementById('sigPlaceholder').style.display = sigHasContent ? 'none' : 'flex';
+  if(state.signatureData){
+    const img = new Image();
+    img.onload = ()=> sigCtx.drawImage(img, 0, 0, rect.width, rect.height);
+    img.src = state.signatureData;
+  }
+  let last = null;
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    return {x:cx, y:cy};
+  }
+  function start(e){ e.preventDefault(); sigDrawing=true; last=pos(e); document.getElementById('sigPlaceholder').style.display='none'; }
+  function move(e){
+    if(!sigDrawing) return; e.preventDefault();
+    const p = pos(e);
+    sigCtx.beginPath(); sigCtx.moveTo(last.x,last.y); sigCtx.lineTo(p.x,p.y); sigCtx.stroke();
+    last = p; sigHasContent = true;
+  }
+  function end(){
+    if(!sigDrawing) return;
+    sigDrawing=false;
+    if(sigHasContent){ state.signatureData = canvas.toDataURL('image/png'); }
+    updateNextButtonState();
+  }
+  canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move);
+  if(sigMouseUpHandler){ window.removeEventListener('mouseup', sigMouseUpHandler); }
+  sigMouseUpHandler = end;
+  window.addEventListener('mouseup', sigMouseUpHandler);
+  canvas.addEventListener('touchstart', start, {passive:false}); canvas.addEventListener('touchmove', move, {passive:false}); canvas.addEventListener('touchend', end);
+
+  document.getElementById('sigClear').onclick = ()=>{
+    sigCtx.clearRect(0,0,canvas.width,canvas.height);
+    state.signatureData = null; sigHasContent = false;
+    document.getElementById('sigPlaceholder').style.display='flex';
+    updateNextButtonState();
+  };
+}
+function updateNextButtonState(){
+  const btn = document.getElementById('btnNext');
+  if(btn) btn.disabled = !canAdvance();
+}
+
+/* ============ HANDLERS ============ */
+function attachHandlers(){
+  document.querySelectorAll('[data-tab]').forEach(el=>{
+    el.onclick = ()=>{
+      const target = el.dataset.tab;
+      if(state.view==='colaboradores' && target!=='colaboradores'){ state.colabForm = null; }
+      state.view = target;
+      render();
+    };
+  });
+
+  if(state.view==='home'){
+    const editLink = document.getElementById('btnEditSheetLink');
+    if(editLink) editLink.onclick = ()=>{ state.showSheetConnect = true; state.sheetConnectStatus='idle'; state.sheetConnectMessage=''; render(); };
+    const cancelBtn = document.getElementById('btnCancelSheetConnect');
+    if(cancelBtn) cancelBtn.onclick = ()=>{ state.showSheetConnect = false; render(); };
+    const clearBtn = document.getElementById('btnClearSheetUrl');
+    if(clearBtn) clearBtn.onclick = ()=>{
+      const input = document.getElementById('in_sheet_url');
+      input.value = '';
+      input.focus();
+    };
+    const connectBtn = document.getElementById('btnConnectSheet');
+    if(connectBtn) connectBtn.onclick = async ()=>{
+      const input = document.getElementById('in_sheet_url');
+      const url = (input.value||'').trim();
+      if(!url || !url.includes('script.google.com')){
+        state.sheetConnectStatus = 'error';
+        state.sheetConnectMessage = 'Pega una URL válida de Apps Script (termina en /exec)';
+        document.getElementById('sheetConnectStatusWrap').innerHTML = sheetConnectStatusHtml();
+        return;
+      }
+      state.sheetConnectStatus = 'testing';
+      state.sheetConnectMessage = '';
+      document.getElementById('sheetConnectStatusWrap').innerHTML = sheetConnectStatusHtml();
+      connectBtn.disabled = true;
+      const res = await testSheetConnection(url);
+      if(res.ok){
+        saveSheetUrl(url);
+        await loadWorkersMap();
+        historialCache = null;
+        state.showSheetConnect = false;
+        state.sheetConnectStatus = 'idle';
+        toast('Conectado · ' + res.count + ' registro(s) encontrados');
+        render();
+      } else {
+        state.sheetConnectStatus = 'error';
+        state.sheetConnectMessage = res.message || 'No se pudo conectar';
+        document.getElementById('sheetConnectStatusWrap').innerHTML = sheetConnectStatusHtml();
+        connectBtn.disabled = false;
+      }
+    };
+    return;
+  }
+
+  if(state.view==='form'){
+    if(state.step===5){
+      const a=document.getElementById('btnAnotherDelivery'); if(a) a.onclick=()=>{
+        state.items={}; state.otros=''; state.tipo_entrega=''; state.fecha=new Date().toISOString().slice(0,10);
+        state.signatureData=null; state.step=2; state.openCat=null; state.syncStatus='idle'; state.syncMessage=''; render();
+      };
+      const b=document.getElementById('btnNewWorker'); if(b) b.onclick=()=>{ resetAll(); render(); };
+      const c=document.getElementById('btnGoHistorial'); if(c) c.onclick=()=>{ resetAll(); state.view='historial'; render(); };
+      return;
+    }
+
+    const back = document.getElementById('btnBack');
+    if(back) back.onclick = ()=>{ state.step -= 1; render(); };
+    const next = document.getElementById('btnNext');
+    if(next) next.onclick = async ()=>{
+      if(!canAdvance()) return;
+      if(state.step < 4){ state.step += 1; render(); }
+      else { await submitRecord(); }
+    };
+
+    if(state.step===1){
+      const comboToggle = document.querySelector('[data-combo-toggle]');
+      if(comboToggle) comboToggle.onclick = ()=>{ state.step1DropdownOpen = !state.step1DropdownOpen; render(); };
+      document.querySelectorAll('[data-combo-option]').forEach(el=>{
+        el.onclick = ()=>{
+          const dniVal = el.dataset.comboOption;
+          const wdata = workersMap[dniVal];
+          if(wdata){ state.worker = { dni: dniVal, nombre: wdata.nombre, cargo: wdata.cargo, sede: wdata.sede }; }
+          state.step1DropdownOpen = false;
+          render();
+        };
+      });
+    }
+
+    if(state.step===2){
+      document.querySelectorAll('[data-toggle-cat]').forEach(el=>{
+        el.onclick = ()=>{ state.openCat = (state.openCat===el.dataset.toggleCat)?null:el.dataset.toggleCat; render(); };
+      });
+      document.querySelectorAll('[data-check]').forEach(el=>{
+        el.onclick = ()=> toggleItem(el.dataset.check);
+      });
+      document.querySelectorAll('[data-check-label]').forEach(el=>{
+        el.onclick = ()=> toggleItem(el.dataset.checkLabel);
+      });
+      document.querySelectorAll('[data-talla-btn]').forEach(el=>{
+        el.onclick = (e)=>{ e.stopPropagation(); setTalla(el.dataset.tallaBtn, el.dataset.tallaVal); };
+      });
+      document.querySelectorAll('[data-talla-input]').forEach(el=>{
+        el.oninput = (e)=>{ setTallaSilent(el.dataset.tallaInput, e.target.value); updateNextButtonState(); };
+        el.onclick = (e)=> e.stopPropagation();
+      });
+      const otros = document.getElementById('in_otros');
+      if(otros) otros.oninput = (e)=>{ state.otros = e.target.value; updateNextButtonState(); };
+    }
+
+    if(state.step===3){
+      document.querySelectorAll('[data-tipo]').forEach(el=>{
+        el.onclick = ()=>{
+          state.tipo_entrega = el.dataset.tipo;
+          document.querySelectorAll('[data-tipo]').forEach(p=> p.classList.toggle('sel', p.dataset.tipo===state.tipo_entrega));
+          updateNextButtonState();
+        };
+      });
+      const fecha = document.getElementById('in_fecha');
+      if(fecha) fecha.oninput = (e)=>{ state.fecha = e.target.value; updateNextButtonState(); };
+      initSignaturePad();
+      updateNextButtonState();
+    }
+  } else if(state.view==='historial') {
+    const search = document.getElementById('in_search');
+    if(search) search.oninput = (e)=>{
+      searchTerm = e.target.value;
+      document.getElementById('histResults').innerHTML = historialListHtml();
+      bindHistResultHandlers();
+    };
+    const exportBtn = document.getElementById('btnExport');
+    if(exportBtn) exportBtn.onclick = exportXlsx;
+    const refreshBtn = document.getElementById('btnRefreshHist');
+    if(refreshBtn) refreshBtn.onclick = refreshHistorial;
+    bindHistResultHandlers();
+  } else if(state.view==='dashboard') {
+    const bindSel = (id, key)=>{
+      const el = document.getElementById(id);
+      if(el) el.onchange = (e)=>{ state.dashFilters[key] = e.target.value; render(); };
+    };
+    bindSel('dash_sede','sede');
+    bindSel('dash_categoria','categoria');
+    bindSel('dash_desde','desde');
+    bindSel('dash_hasta','hasta');
+    const clearBtn = document.getElementById('btnClearDashFilters');
+    if(clearBtn) clearBtn.onclick = ()=>{ state.dashFilters = {sede:'',categoria:'',desde:'',hasta:''}; render(); };
+    const refreshBtn = document.getElementById('btnRefreshDash');
+    if(refreshBtn) refreshBtn.onclick = refreshHistorial;
+    document.querySelectorAll('[data-colabview]').forEach(el=>{
+      el.onclick = ()=>{ state.dashColabView = el.dataset.colabview; render(); };
+    });
+  } else if(state.view==='colaboradores') {
+    if(state.colabForm){
+      ['cf_dni','cf_nombre','cf_cargo','cf_sede','cf_nivel'].forEach((id,i)=>{
+        const key = ['dni','nombre','cargo','sede','nivel'][i];
+        const el = document.getElementById(id);
+        if(el) el.oninput = (e)=>{ state.colabForm[key] = key==='dni' ? e.target.value.replace(/\D/g,'').slice(0,8) : e.target.value; };
+      });
+      document.querySelectorAll('[data-colab-estado]').forEach(el=>{
+        el.onclick = ()=>{ state.colabForm.estado = el.dataset.colabEstado; render(); };
+      });
+      const cancel = document.getElementById('btnCancelColab');
+      if(cancel) cancel.onclick = ()=>{ state.colabForm = null; render(); };
+      const save = document.getElementById('btnSaveColab');
+      if(save) save.onclick = async ()=>{
+        const f = state.colabForm;
+        if(!f.dni || f.dni.length<8 || !f.nombre.trim() || !f.cargo.trim() || !f.sede.trim()){
+          toast('Completa DNI, nombre, cargo y sede'); return;
+        }
+        if(f.mode==='new' && workersMap[f.dni]){ toast('Ya existe un colaborador con ese DNI'); return; }
+        save.disabled = true;
+        save.textContent = 'Guardando en la Hoja de Google…';
+        try{
+          await saveColaborador(f, f.origDni);
+          state.colabForm = null;
+          toast('Colaborador guardado en tu Hoja de Google');
+          render();
+        }catch(e){
+          toast('No se pudo guardar: ' + (e.message || 'error desconocido'));
+          save.disabled = false;
+          save.textContent = 'Guardar colaborador';
+        }
+      };
+    } else {
+      const search = document.getElementById('in_colab_search');
+      if(search) search.oninput = (e)=>{
+        state.colabSearch = e.target.value;
+        document.getElementById('colabResults').innerHTML = colabListHtml();
+        bindColabResultHandlers();
+      };
+      const exportColabBtn = document.getElementById('btnExportColab');
+      if(exportColabBtn) exportColabBtn.onclick = exportXlsx;
+      const refreshColabBtn = document.getElementById('btnRefreshColab');
+      if(refreshColabBtn) refreshColabBtn.onclick = async ()=>{
+        refreshColabBtn.disabled = true;
+        await loadWorkersMap();
+        render();
+      };
+      document.querySelectorAll('[data-colab-filter]').forEach(el=>{
+        el.onclick = ()=>{ state.colabFilter = el.dataset.colabFilter; render(); };
+      });
+      const newBtn = document.getElementById('btnNewColab');
+      if(newBtn) newBtn.onclick = ()=>{
+        state.colabForm = { mode:'new', dni:'', nombre:'', cargo:'', sede:'', nivel:'', estado:'activo', origDni:null };
+        render();
+      };
+      bindColabResultHandlers();
+    }
+  }
+}
+
+function toggleItem(id){
+  const cur = state.items[id] || {checked:false, talla:''};
+  cur.checked = !cur.checked;
+  state.items[id] = cur;
+  render();
+}
+function setTalla(id, val){
+  const cur = state.items[id] || {checked:true, talla:''};
+  cur.talla = val;
+  state.items[id] = cur;
+  render();
+}
+function setTallaSilent(id, val){
+  const cur = state.items[id] || {checked:true, talla:''};
+  cur.talla = val;
+  state.items[id] = cur;
+}
+
+function showRecordDetail(id){
+  const r = historialCache.find(x=>x.id===id);
+  if(!r) return;
+  const items = flattenRecordItems(r).join('\n• ');
+  alert(`${r.worker.nombre} (DNI ${r.worker.dni})\n${r.worker.cargo} · ${r.worker.sede}\nFecha: ${fmtDate(r.fecha)}\nTipo: ${tipoEntregaLabel(r.tipo_entrega)}\n\nEPP entregados:\n• ${items || '—'}`);
+}
+
+async function submitRecord(){
+  const next = document.getElementById('btnNext');
+  if(next){ next.disabled = true; next.textContent = 'Guardando en la Hoja de Google…'; }
+  const record = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+    worker: {...state.worker},
+    items: JSON.parse(JSON.stringify(state.items)),
+    otros: state.otros,
+    tipo_entrega: state.tipo_entrega,
+    fecha: state.fecha,
+    signatureData: state.signatureData,
+    createdAt: new Date().toISOString()
+  };
+  try{
+    await saveRecord(record);
+    state.step = 5;
+    state.syncStatus = 'ok';
+    state.syncMessage = '';
+    toast('Registro guardado en tu Hoja de Google');
+    render();
+  }catch(e){
+    console.error(e);
+    toast('No se pudo guardar: ' + (e.message || 'error desconocido'));
+    if(next){ next.disabled=false; next.textContent='Guardar registro'; }
+  }
+}
+
+function resetAll(){
+  state = {
+    view:'form', step:1,
+    worker:{nombre:'',dni:'',cargo:'',sede:''},
+    items:{}, otros:'', tipo_entrega:'', fecha:new Date().toISOString().slice(0,10),
+    signatureData:null, openCat:null, step1Search:'', step1DropdownOpen:false,
+    colabFilter: state.colabFilter, colabSearch: state.colabSearch, colabForm: null,
+    syncStatus:'idle', syncMessage:'',
+    dashFilters: state.dashFilters || {sede:'',categoria:'',desde:'',hasta:''},
+    dashColabView: state.dashColabView || 'categoria'
+  };
+}
+
+/* ============ INIT ============ */
+(async function init(){
+  loadSheetUrl();
+  render();
+  if(sheetUrl){
+    await loadWorkersMap();
+    render();
+  }
+})();
+</script>
+</body>
+</html>

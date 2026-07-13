@@ -350,6 +350,29 @@
   .dash-table td{ padding:8px 8px; border-bottom:1px solid #F0F1F2; }
   .dash-table tbody tr:hover{ background:var(--bg); }
 
+  /* ===== PRINT FORMAT (FT-017) ===== */
+  #printArea{ display:none; }
+  @media print{
+    body{ padding:0 !important; background:#fff !important; }
+    .app{ display:none !important; }
+    #printArea{ display:block !important; font-family:Calibri, Arial, sans-serif; color:#000; }
+    @page{ size:A4 landscape; margin:7mm; }
+  }
+  .pf-wrap{ width:100%; font-size:8px; }
+  .pf-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .pf-table td, .pf-table th{ border:0.6pt solid #000; padding:1px 2px; vertical-align:middle; word-wrap:break-word; }
+  .pf-head-title{ text-align:center; font-weight:bold; }
+  .pf-vert{
+    writing-mode:vertical-rl; transform:rotate(180deg); white-space:normal;
+    font-size:6.5px; line-height:1.05; height:88px; text-align:center; margin:0 auto; padding:2px 0;
+  }
+  .pf-cat{ font-weight:bold; font-size:7px; text-align:center; background:#E8E8E8; }
+  .pf-mark{ text-align:center; font-weight:bold; font-size:8px; }
+  .pf-date{ text-align:center; font-size:7.5px; white-space:nowrap; }
+  .pf-sig-img{ max-height:16px; max-width:100%; display:block; margin:0 auto; }
+  .pf-label{ background:#F2F2F2; font-weight:bold; }
+  .pf-small{ font-size:7px; }
+
   @media (min-width:860px){
     .kpi-grid{ grid-template-columns:repeat(4,1fr); }
     .dash-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
@@ -418,6 +441,7 @@
 </head>
 <body>
 <div class="app" id="app"></div>
+<div id="printArea"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1616,6 +1640,129 @@ function renderDashboardView(){
   </div>`;
 }
 
+/* ============ IMPRESIÓN FORMATO FT-017 ============ */
+function fmtDateShort(raw){
+  if(!raw) return '';
+  const s = String(raw).slice(0,10);
+  const d = new Date(s + 'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  const p = n => String(n).padStart(2,'0');
+  return p(d.getDate()) + '/' + p(d.getMonth()+1) + '/' + String(d.getFullYear()).slice(2);
+}
+
+function buildPrintHtml(dni){
+  const w = workersMap[dni] || {};
+  const registros = (historialCache||[]).filter(r => r.worker.dni === dni)
+    .slice().sort((a,b)=> String(a.fecha).localeCompare(String(b.fecha)));
+
+  // Columnas: todas las categorías con sus items, en el mismo orden del formato original
+  const allCols = [];
+  CATEGORIES.forEach(cat=>{
+    cat.items.forEach(it=> allCols.push({cat:cat.label, label:it.label}));
+  });
+
+  // Fila de categorías (colspan por grupo)
+  let catRow = '<td class="pf-label" rowspan="2">N°</td>';
+  CATEGORIES.forEach(cat=>{
+    catRow += `<td class="pf-cat" colspan="${cat.items.length}">${cat.label}</td>`;
+  });
+  catRow += '<td class="pf-cat" rowspan="1" colspan="1">Otros</td>';
+  catRow += '<td class="pf-cat" colspan="3">Tipo de entrega</td>';
+  catRow += '<td class="pf-cat" rowspan="2" style="word-break:keep-all; overflow-wrap:normal;">Fecha de entrega</td>';
+  catRow += '<td class="pf-cat" rowspan="2" style="word-break:keep-all; overflow-wrap:normal;">Firma</td>';
+
+  // Fila de nombres de item (vertical)
+  let itemRow = '';
+  allCols.forEach(c=>{ itemRow += `<td><div class="pf-vert">${c.label}</div></td>`; });
+  itemRow += `<td><div class="pf-vert">Otros (ver nota *)</div></td>`;
+  itemRow += `<td><div class="pf-vert">Primera entrega</div></td>`;
+  itemRow += `<td><div class="pf-vert">Renovación</div></td>`;
+  itemRow += `<td><div class="pf-vert">Por servicio</div></td>`;
+
+  // Filas de entregas (mínimo 12 filas para dejar espacio de llenado manual)
+  const NUM_ROWS = Math.max(20, registros.length);
+  let bodyRows = '';
+  const otrosNotes = [];
+  for(let i=0; i<NUM_ROWS; i++){
+    const r = registros[i];
+    let cells = `<td class="pf-mark">${i+1}</td>`;
+    if(r){
+      const itemMap = {};
+      getItemRows(r).forEach(x=>{ itemMap[x.item] = x.talla ? x.talla : 'X'; });
+      allCols.forEach(c=>{ cells += `<td class="pf-mark">${itemMap[c.label]||''}</td>`; });
+      const otros = getItemRows(r).filter(x=>x.categoria==='Otros').map(x=>x.item);
+      if(otros.length){ otrosNotes.push('Fila '+(i+1)+': '+otros.join('; ')); }
+      cells += `<td class="pf-mark">${otros.length?'X':''}</td>`;
+      const t = tipoEntregaLabel(r.tipo_entrega);
+      cells += `<td class="pf-mark">${t==='Primera entrega'?'X':''}</td>`;
+      cells += `<td class="pf-mark">${t==='Renovación'?'X':''}</td>`;
+      cells += `<td class="pf-mark">${t==='Por servicio'?'X':''}</td>`;
+      cells += `<td class="pf-date">${fmtDateShort(r.fecha)}</td>`;
+      cells += `<td>${r.signatureData ? `<img class="pf-sig-img" src="${r.signatureData}">` : ''}</td>`;
+    } else {
+      for(let k=0;k<allCols.length+6;k++) cells += '<td>&nbsp;</td>';
+    }
+    bodyRows += `<tr>${cells}</tr>`;
+  }
+
+  const totalCols = allCols.length + 7;
+  // Anchos de columna garantizados a nivel de tabla (las celdas combinadas de la cabecera
+  // ya no pueden redistribuirlos): N° | items | Otros | 3 tipos | Fecha | Firma
+  let colgroup = '<colgroup><col style="width:16px;">';
+  allCols.forEach(()=>{ colgroup += '<col>'; });
+  colgroup += '<col style="width:22px;">';           // Otros
+  colgroup += '<col style="width:15px;"><col style="width:15px;"><col style="width:15px;">'; // Tipos
+  colgroup += '<col style="width:48px;">';           // Fecha de entrega
+  colgroup += '<col style="width:48px;">';           // Firma (mismo ancho que Fecha)
+  colgroup += '</colgroup>';
+  return `
+  <div class="pf-wrap">
+    <table class="pf-table">
+      ${colgroup}
+      <tr>
+        <td colspan="6" class="pf-head-title" style="height:34px;">RAM<br>EQUIPOS</td>
+        <td colspan="${totalCols-12}" class="pf-head-title">SISTEMA DE GESTIÓN DE SEGURIDAD, SALUD OCUPACIONAL Y MEDIO AMBIENTE<br><span style="font-size:10px;">REGISTRO DE EQUIPOS DE PROTECCIÓN PERSONAL</span></td>
+        <td colspan="3" class="pf-small">Código:<br>Fecha:<br>Versión:<br>Páginas:</td>
+        <td colspan="3" class="pf-small">${COMPANY.codigo}<br>${COMPANY.fecha_doc}<br>${COMPANY.version}<br>1 de 1</td>
+      </tr>
+      <tr><td colspan="${totalCols}" class="pf-label">Datos del empleador</td></tr>
+      <tr>
+        <td colspan="${Math.floor(totalCols*0.28)}" class="pf-small"><b>Razón social:</b> ${COMPANY.razon}</td>
+        <td colspan="${Math.floor(totalCols*0.12)}" class="pf-small"><b>RUC:</b> ${COMPANY.ruc}</td>
+        <td colspan="${Math.floor(totalCols*0.32)}" class="pf-small"><b>Domicilio:</b> ${COMPANY.domicilio}</td>
+        <td colspan="${totalCols - Math.floor(totalCols*0.28) - Math.floor(totalCols*0.12) - Math.floor(totalCols*0.32)}" class="pf-small"><b>Actividad económica:</b> ${COMPANY.actividad}</td>
+      </tr>
+      <tr><td colspan="${totalCols}" class="pf-small">Por medio del presente instrumento, quien suscribe declara recibir a su entera conformidad los Equipos de Protección Personal (EPP) descritos, que serán usados para su propia protección, comprometiéndose a utilizarlos durante su jornada de trabajo, cuidarlos y devolverlos al término de su relación con ${COMPANY.razon}.</td></tr>
+      <tr>
+        <td colspan="${Math.floor(totalCols*0.38)}" class="pf-small"><b>Nombre del trabajador:</b> ${w.nombre||''}</td>
+        <td colspan="${Math.floor(totalCols*0.14)}" class="pf-small"><b>DNI:</b> ${dni}</td>
+        <td colspan="${Math.floor(totalCols*0.24)}" class="pf-small"><b>Ocupación o cargo:</b> ${w.cargo||''}</td>
+        <td colspan="${totalCols - Math.floor(totalCols*0.38) - Math.floor(totalCols*0.14) - Math.floor(totalCols*0.24)}" class="pf-small"><b>Sede:</b> ${w.sede||''}</td>
+      </tr>
+      <tr><td colspan="${totalCols}" class="pf-label" style="text-align:center;">ELEMENTOS DE PROTECCIÓN PERSONAL Y ROPA DE TRABAJO</td></tr>
+      <tr>${catRow}</tr>
+      <tr>${itemRow}</tr>
+      ${bodyRows}
+      <tr><td colspan="${totalCols}" class="pf-small"><b>* Otros:</b> ${otrosNotes.join(' · ') || '&nbsp;'}</td></tr>
+      <tr>
+        <td colspan="${Math.floor(totalCols*0.35)}" class="pf-small" style="height:26px;"><b>Responsable del registro — Nombres y apellidos:</b></td>
+        <td colspan="${Math.floor(totalCols*0.25)}" class="pf-small"><b>Cargo:</b></td>
+        <td colspan="${Math.floor(totalCols*0.15)}" class="pf-small"><b>Fecha:</b></td>
+        <td colspan="${totalCols - Math.floor(totalCols*0.35) - Math.floor(totalCols*0.25) - Math.floor(totalCols*0.15)}" class="pf-small"><b>Firma:</b></td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+async function printColaboradorFormat(dni){
+  if(historialCache === null){
+    toast('Cargando registros…');
+    historialCache = await fetchAllRecords();
+  }
+  document.getElementById('printArea').innerHTML = buildPrintHtml(dni);
+  setTimeout(()=> window.print(), 150);
+}
+
 async function exportXlsx(){
   if(typeof XLSX === 'undefined'){ toast('No se pudo cargar el módulo de Excel'); return; }
   if(historialCache===null){ toast('Preparando archivo…'); historialCache = await fetchAllRecords(); }
@@ -1667,6 +1814,7 @@ function colabListHtml(){
       </div>
       <div class="rec-actions">
         <button data-edit-colab="${r.dni}">${iconInline('pencil')} Editar</button>
+        <button data-print-colab="${r.dni}">${iconInline('list')} Imprimir</button>
         <button data-toggle-estado="${r.dni}">${iconInline('power')} ${r.estado==='activo'?'Desactivar':'Activar'}</button>
         <button class="danger" data-del-colab="${r.dni}">${iconInline('trash')} Eliminar</button>
       </div>
@@ -1681,6 +1829,9 @@ function bindColabResultHandlers(){
       state.colabForm = { mode:'edit', dni, nombre:w.nombre, cargo:w.cargo, sede:w.sede, nivel:w.nivel||'', estado:w.estado||'activo', origDni:dni };
       render();
     };
+  });
+  document.querySelectorAll('[data-print-colab]').forEach(el=>{
+    el.onclick = ()=> printColaboradorFormat(el.dataset.printColab);
   });
   document.querySelectorAll('[data-toggle-estado]').forEach(el=>{
     el.onclick = async ()=>{

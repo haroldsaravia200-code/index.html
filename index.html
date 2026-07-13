@@ -1865,6 +1865,7 @@ function initSignaturePad(){
   sigCtx.scale(ratio, ratio);
   sigCtx.lineWidth = 2.4;
   sigCtx.lineCap = 'round';
+  sigCtx.lineJoin = 'round';
   sigCtx.strokeStyle = '#1B2027';
   sigHasContent = !!state.signatureData;
   document.getElementById('sigPlaceholder').style.display = sigHasContent ? 'none' : 'flex';
@@ -1876,28 +1877,37 @@ function initSignaturePad(){
   let last = null;
   function pos(e){
     const r = canvas.getBoundingClientRect();
-    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    return {x:cx, y:cy};
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
-  function start(e){ e.preventDefault(); sigDrawing=true; last=pos(e); document.getElementById('sigPlaceholder').style.display='none'; }
+  function start(e){
+    e.preventDefault();
+    if(canvas.setPointerCapture){ try{ canvas.setPointerCapture(e.pointerId); }catch(err){} }
+    sigDrawing = true;
+    last = pos(e);
+    document.getElementById('sigPlaceholder').style.display = 'none';
+  }
   function move(e){
-    if(!sigDrawing) return; e.preventDefault();
+    if(!sigDrawing) return;
+    e.preventDefault();
     const p = pos(e);
-    sigCtx.beginPath(); sigCtx.moveTo(last.x,last.y); sigCtx.lineTo(p.x,p.y); sigCtx.stroke();
+    sigCtx.beginPath(); sigCtx.moveTo(last.x, last.y); sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
     last = p; sigHasContent = true;
   }
   function end(){
     if(!sigDrawing) return;
-    sigDrawing=false;
+    sigDrawing = false;
     if(sigHasContent){ state.signatureData = canvas.toDataURL('image/png'); }
     updateNextButtonState();
   }
-  canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move);
-  if(sigMouseUpHandler){ window.removeEventListener('mouseup', sigMouseUpHandler); }
+  // Pointer Events unifican mouse, touch y lápiz en un solo flujo: evita eventos
+  // duplicados/conflictivos que ocurrían al escuchar mouse y touch por separado.
+  canvas.addEventListener('pointerdown', start);
+  canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  if(sigMouseUpHandler){ window.removeEventListener('pointerup', sigMouseUpHandler); }
   sigMouseUpHandler = end;
-  window.addEventListener('mouseup', sigMouseUpHandler);
-  canvas.addEventListener('touchstart', start, {passive:false}); canvas.addEventListener('touchmove', move, {passive:false}); canvas.addEventListener('touchend', end);
+  window.addEventListener('pointerup', sigMouseUpHandler);
 
   document.getElementById('sigClear').onclick = ()=>{
     sigCtx.clearRect(0,0,canvas.width,canvas.height);

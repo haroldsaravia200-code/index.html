@@ -1504,18 +1504,26 @@ function svgDonut(colored){
   const total = colored.reduce((s,d)=>s+d[1],0) || 1;
   const r = size/2 - 16, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
   let offset = 0;
-  const segs = colored.map(d=>{
-    const len = (d[1]/total) * circ;
-    const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d[2]}" stroke-width="20" stroke-dasharray="${len.toFixed(2)} ${(circ-len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+  let segs = '', labels = '';
+  colored.forEach(d=>{
+    const frac = d[1]/total;
+    const len = frac*circ;
+    segs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d[2]}" stroke-width="20" stroke-dasharray="${len.toFixed(2)} ${(circ-len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    if(frac >= 0.06){
+      const midFrac = (offset + len/2) / circ;
+      const angle = -Math.PI/2 + midFrac * 2*Math.PI;
+      const lx = cx + r * Math.cos(angle);
+      const ly = cy + r * Math.sin(angle);
+      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#fff" style="font-family:Inter,sans-serif;">${Math.round(frac*100)}%</text>`;
+    }
     offset += len;
-    return seg;
-  }).join('');
-  return `<svg class="donut-svg" viewBox="0 0 ${size} ${size}">${segs}</svg>`;
+  });
+  return `<svg class="donut-svg" viewBox="0 0 ${size} ${size}">${segs}${labels}</svg>`;
 }
 
-function renderDonutWithLegend(data){
+function renderDonutWithLegend(data, colorFn){
   if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
-  const colored = data.map((d,i)=>[d[0], d[1], CHART_COLORS[i % CHART_COLORS.length]]);
+  const colored = data.map((d,i)=>[d[0], d[1], colorFn ? colorFn(d[0]) : CHART_COLORS[i % CHART_COLORS.length]]);
   const total = colored.reduce((s,d)=>s+d[1],0) || 1;
   const legend = colored.map(d=>`
     <div class="legend-row">
@@ -1593,7 +1601,7 @@ function renderDashboardView(){
 
   const topItems = countBy(rows,'item').slice(0,8);
   const porCategoria = countBy(rows,'categoria');
-  const porTipo = countBy(rows,'tipo_entrega');
+  const porTalla = countBy(rows.filter(r=>r.talla), 'talla').slice(0,10);
   const tendenciaMensual = monthlyTrend(rows);
   const tendenciaSemanal = weeklyTrend(rows, 12);
 
@@ -1617,7 +1625,7 @@ function renderDashboardView(){
       </div>
       <div class="card full-width">
         <h2 class="step-title" style="font-size:17px;">Consumo por categoría</h2>
-        ${renderHBars(porCategoria, getCategoryColor)}
+        ${renderDonutWithLegend(porCategoria, getCategoryColor)}
       </div>
       <div class="card full-width" style="grid-column:1/-1;">
         <h2 class="step-title" style="font-size:17px;">Colaboradores que más EPP consumen</h2>
@@ -1629,8 +1637,8 @@ function renderDashboardView(){
         ${colabPanelBody}
       </div>
       <div class="card full-width">
-        <h2 class="step-title" style="font-size:17px;">Tipo de entrega</h2>
-        ${renderDonutWithLegend(porTipo)}
+        <h2 class="step-title" style="font-size:17px;">Tallas más consumidas</h2>
+        ${renderHBars(porTalla)}
       </div>
       <div class="card full-width">
         <h2 class="step-title" style="font-size:17px;">Tendencia mensual</h2>
@@ -1764,10 +1772,8 @@ function buildPrintHtml(dni){
 }
 
 async function printColaboradorFormat(dni){
-  if(historialCache === null){
-    toast('Cargando registros…');
-    historialCache = await fetchAllRecords();
-  }
+  toast('Actualizando datos antes de imprimir…');
+  historialCache = await fetchAllRecords();
   document.getElementById('printArea').innerHTML = buildPrintHtml(dni);
   setTimeout(()=> window.print(), 150);
 }
@@ -2102,11 +2108,16 @@ function updateNextButtonState(){
 /* ============ HANDLERS ============ */
 function attachHandlers(){
   document.querySelectorAll('[data-tab]').forEach(el=>{
-    el.onclick = ()=>{
+    el.onclick = async ()=>{
       const target = el.dataset.tab;
       if(state.view==='colaboradores' && target!=='colaboradores'){ state.colabForm = null; }
+      if((target==='historial' || target==='dashboard') && state.view!==target){ historialCache = null; }
       state.view = target;
       render();
+      if((target==='colaboradores' || target==='form') && sheetUrl){
+        await loadWorkersMap();
+        render();
+      }
     };
   });
 

@@ -625,8 +625,16 @@ async function fetchAllRecords(){
   if(!sheetUrl) return [];
   try{
     const sep = sheetUrl.includes('?') ? '&' : '?';
-    const json = await sheetFetch(sheetUrl + sep + 'type=registros');
-    const rows = json.rows || [];
+    const [regJson, firJson] = await Promise.all([
+      sheetFetch(sheetUrl + sep + 'type=registros'),
+      sheetFetch(sheetUrl + sep + 'type=firmas').catch(()=>({rows:[]}))
+    ]);
+    const rows = regJson.rows || [];
+    const firmaById = {};
+    (firJson.rows || []).forEach(f=>{
+      const id = String(f['ID']||'');
+      if(id && f['Firma']){ firmaById[id] = f['Firma']; }
+    });
     const byId = {};
     const order = [];
     rows.forEach(row=>{
@@ -639,6 +647,7 @@ async function fetchAllRecords(){
           worker: { nombre: row['Trabajador']||'', dni: String(row['DNI']||''), cargo: row['Cargo']||'', sede: row['Sede']||'' },
           tipo_entrega: row['Tipo de entrega']||'',
           otros: '',
+          signatureData: firmaById[id] || null,
           _itemRows: []
         };
         order.push(id);
@@ -1974,10 +1983,22 @@ async function syncRegistroToSheet(record){
   }));
   try{
     const json = await sheetFetch(sheetUrl, { method:'POST', body: JSON.stringify({type:'registro', action:'append', rows}) });
-    return json.ok ? {ok:true} : {ok:false, message:json.error || 'Respuesta inesperada'};
+    if(!json.ok) return {ok:false, message:json.error || 'Respuesta inesperada'};
   }catch(e){
     return {ok:false, message:e.message};
   }
+  // La firma se guarda por separado, en su propia pestaña (Firmas), vinculada por el mismo ID
+  if(record.signatureData){
+    try{
+      await sheetFetch(sheetUrl, { method:'POST', body: JSON.stringify({
+        type:'firma', action:'append',
+        data: { 'ID': record.id, 'Fecha': record.fecha, 'Trabajador': record.worker.nombre, 'Firma': record.signatureData }
+      }) });
+    }catch(e){
+      console.error('No se pudo guardar la firma por separado', e);
+    }
+  }
+  return {ok:true};
 }
 
 async function deleteRegistroFromSheet(id){
@@ -2008,7 +2029,7 @@ let sigCtx=null, sigDrawing=false, sigHasContent=false, sigMouseUpHandler=null;
 function initSignaturePad(){
   const canvas = document.getElementById('sigCanvas');
   if(!canvas) return;
-  const ratio = window.devicePixelRatio || 1;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * ratio;
   canvas.height = rect.height * ratio;
@@ -2047,7 +2068,13 @@ function initSignaturePad(){
   function end(){
     if(!sigDrawing) return;
     sigDrawing = false;
-    if(sigHasContent){ state.signatureData = canvas.toDataURL('image/png'); }
+    if(sigHasContent){
+      let data = canvas.toDataURL('image/png');
+      // Límite de celda en Google Sheets: 50,000 caracteres. Si la firma pesa más,
+      // se recomprime como JPEG (mucho más liviano) para no perder el guardado.
+      if(data.length > 45000){ data = canvas.toDataURL('image/jpeg', 0.6); }
+      state.signatureData = data;
+    }
     updateNextButtonState();
   }
   // Pointer Events unifican mouse, touch y lápiz en un solo flujo: evita eventos

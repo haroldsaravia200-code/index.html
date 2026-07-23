@@ -576,6 +576,7 @@ let state = {
   colabForm: null,          // null | {mode:'new'|'edit', dni, nombre, cargo, sede, estado, origDni}
   dashFilters: { sede:'', categoria:'', desde:'', hasta:'' },
   dashColabView: 'categoria', // 'categoria' | 'item' | 'detalle'
+  dashTallaCategoria: '', // filtro propio del panel "Tallas más consumidas"
   syncStatus: 'idle',       // 'idle' | 'syncing' | 'ok' | 'error'
   syncMessage: '',
   showSheetConnect: false,
@@ -1601,7 +1602,12 @@ function renderDashboardView(){
 
   const topItems = countBy(rows,'item').slice(0,8);
   const porCategoria = countBy(rows,'categoria');
-  const porTalla = countBy(rows.filter(r=>r.talla), 'talla').slice(0,10);
+  const rowsConTalla = rows.filter(r=>r.talla);
+  const categoriasConTalla = Array.from(new Set(rowsConTalla.map(r=>r.categoria))).sort((a,b)=>a.localeCompare(b,'es'));
+  const tallaFiltro = categoriasConTalla.includes(state.dashTallaCategoria) ? state.dashTallaCategoria : '';
+  const rowsTallaFiltradas = tallaFiltro ? rowsConTalla.filter(r=>r.categoria===tallaFiltro) : rowsConTalla;
+  const porTalla = countBy(rowsTallaFiltradas, 'talla').slice(0,10);
+  const tallaOptions = categoriasConTalla.map(c=>`<option value="${c}" ${tallaFiltro===c?'selected':''}>${c}</option>`).join('');
   const tendenciaMensual = monthlyTrend(rows);
   const tendenciaSemanal = weeklyTrend(rows, 12);
 
@@ -1638,6 +1644,13 @@ function renderDashboardView(){
       </div>
       <div class="card full-width">
         <h2 class="step-title" style="font-size:17px;">Tallas más consumidas</h2>
+        <div class="field" style="margin-bottom:12px;">
+          <label>Filtrar por categoría</label>
+          <select id="dash_talla_cat">
+            <option value="">Todas las categorías con talla</option>
+            ${tallaOptions}
+          </select>
+        </div>
         ${renderHBars(porTalla)}
       </div>
       <div class="card full-width">
@@ -2261,6 +2274,8 @@ function attachHandlers(){
     document.querySelectorAll('[data-colabview]').forEach(el=>{
       el.onclick = ()=>{ state.dashColabView = el.dataset.colabview; render(); };
     });
+    const tallaCatSel = document.getElementById('dash_talla_cat');
+    if(tallaCatSel) tallaCatSel.onchange = (e)=>{ state.dashTallaCategoria = e.target.value; render(); };
   } else if(state.view==='colaboradores') {
     if(state.colabForm){
       ['cf_dni','cf_nombre','cf_cargo','cf_sede','cf_nivel'].forEach((id,i)=>{

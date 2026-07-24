@@ -324,6 +324,9 @@
   .kpi-label{ font-size:11px; color:var(--text-soft); text-transform:uppercase; letter-spacing:.3px; margin-top:3px; }
 
   .hbar-row{ margin-bottom:14px; }
+  .hbar-clickable{ cursor:pointer; border-radius:8px; padding:4px; margin:0 -4px 10px; transition:.12s; }
+  .hbar-clickable:hover{ background:var(--bg); }
+  .hbar-clickable.hbar-selected{ background:#FFF8E6; box-shadow:inset 0 0 0 1.5px var(--yellow-dark); }
   .hbar-row:last-child{ margin-bottom:0; }
   .hbar-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:5px; }
   .hbar-label{ font-size:12.5px; color:var(--text); font-weight:600; line-height:1.35; }
@@ -334,6 +337,7 @@
   .vbar-chart{ display:flex; align-items:flex-end; gap:6px; height:130px; padding-top:20px; overflow-x:auto; }
   .vbar-col{ flex:1 0 40px; min-width:40px; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; justify-content:flex-end; }
   .vbar-bar{ width:100%; max-width:26px; border-radius:5px 5px 0 0; background:var(--steel); min-height:3px; }
+  .vbar-bar.vbar-stacked{ background:none; display:flex; flex-direction:column-reverse; overflow:hidden; }
   .vbar-label{ font-size:9.5px; color:var(--text-soft); white-space:normal; text-align:center; line-height:1.2; }
   .vbar-value{ font-size:10.5px; font-weight:700; color:var(--steel); font-family:'IBM Plex Mono',monospace; }
 
@@ -347,6 +351,16 @@
 
   .dash-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:420px; }
   .dash-table th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; color:var(--text-soft); padding:7px 8px; border-bottom:2px solid var(--line); white-space:nowrap; }
+  .dash-table th.vert{ height:120px; padding:0; vertical-align:bottom; text-transform:none; border-right:1px solid #F0F1F2; }
+  .dash-table th.vert .vert-inner{
+    width:100%; height:120px; display:flex; align-items:center; justify-content:center;
+  }
+  .dash-table th.vert .vert-inner span{
+    display:inline-block; transform:rotate(-90deg); white-space:nowrap;
+    font-size:10px; font-weight:700; color:var(--text-soft); text-transform:none;
+  }
+  .dash-table th, .dash-table td{ border-right:1px solid #F0F1F2; }
+  .dash-table th:last-child, .dash-table td:last-child{ border-right:none; }
   .dash-table td{ padding:8px 8px; border-bottom:1px solid #F0F1F2; }
   .dash-table tbody tr:hover{ background:var(--bg); }
 
@@ -575,8 +589,10 @@ let state = {
   colabSearch: '',
   colabForm: null,          // null | {mode:'new'|'edit', dni, nombre, cargo, sede, estado, origDni}
   dashFilters: { sede:'', categoria:'', desde:'', hasta:'' },
-  dashColabView: 'categoria', // 'categoria' | 'item' | 'detalle'
+  dashColabView: 'categoria', // 'categoria' | 'detalle'
+  dashRenovacionFiltro: 'semana', // 'semana' | 'todo'
   dashTallaCategoria: '', // filtro propio del panel "Tallas más consumidas"
+  dashTallaSeleccionada: null, // talla+ítem seleccionado para ver detalle
   syncStatus: 'idle',       // 'idle' | 'syncing' | 'ok' | 'error'
   syncMessage: '',
   showSheetConnect: false,
@@ -1227,6 +1243,12 @@ function countBy(rows, key){
   return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
 }
 
+function countByLabel(rows, labelFn){
+  const counts = {};
+  rows.forEach(r=>{ const k = labelFn(r) || '—'; counts[k] = (counts[k]||0) + 1; });
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+}
+
 function monthlyTrend(rows){
   const counts = {};
   rows.forEach(r=>{ const m = (r.fecha||'').slice(0,7); if(!m) return; counts[m] = (counts[m]||0) + 1; });
@@ -1270,6 +1292,30 @@ function weekLabel(ws){
   return d.getDate() + ' ' + names[d.getMonth()];
 }
 
+function monthlyTrendByCategoria(rows){
+  const buckets = {};
+  rows.forEach(r=>{
+    const m = (r.fecha||'').slice(0,7); if(!m) return;
+    if(!buckets[m]) buckets[m] = {};
+    buckets[m][r.categoria] = (buckets[m][r.categoria]||0) + 1;
+  });
+  return Object.entries(buckets).sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([key,cats])=>({ key, cats, total: Object.values(cats).reduce((s,v)=>s+v,0) }));
+}
+
+function weeklyTrendByCategoria(rows, lastN){
+  const buckets = {};
+  rows.forEach(r=>{
+    const ws = getWeekStart(r.fecha); if(!ws) return;
+    if(!buckets[ws]) buckets[ws] = {};
+    buckets[ws][r.categoria] = (buckets[ws][r.categoria]||0) + 1;
+  });
+  let arr = Object.entries(buckets).sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([key,cats])=>({ key, cats, total: Object.values(cats).reduce((s,v)=>s+v,0) }));
+  if(lastN) arr = arr.slice(-lastN);
+  return arr;
+}
+
 function topColaboradores(rows, n){
   const counts = {}, names = {};
   rows.forEach(r=>{
@@ -1292,26 +1338,6 @@ function topColaboradoresPorCategoria(rows, n){
     byDni[key].cats[r.categoria] = (byDni[key].cats[r.categoria]||0) + 1;
   });
   return Object.values(byDni).sort((a,b)=>b.total-a.total).slice(0,n);
-}
-
-function topColaboradoresItemDetail(rows, nColabs){
-  const top = topColaboradoresPorCategoria(rows, nColabs);
-  const topNames = new Set(top.map(d=>d.nombre));
-  const filtered = rows.filter(r=> topNames.has(r.nombre));
-  const byKey = {};
-  filtered.forEach(r=>{
-    const key = r.nombre + '|' + r.item + '|' + (r.talla||'');
-    if(!byKey[key]) byKey[key] = { nombre:r.nombre, item:r.item, talla:r.talla||'', count:0 };
-    byKey[key].count++;
-  });
-  return Object.values(byKey).sort((a,b)=> a.nombre.localeCompare(b.nombre,'es') || b.count-a.count);
-}
-
-function topColaboradoresItemChart(rows, nColabs){
-  const detail = topColaboradoresItemDetail(rows, nColabs);
-  const byItem = {};
-  detail.forEach(d=>{ byItem[d.item] = (byItem[d.item]||0) + d.count; });
-  return Object.entries(byItem).sort((a,b)=>b[1]-a[1]).slice(0,10);
 }
 
 function renderStackedColabBars(data){
@@ -1358,7 +1384,7 @@ function daysBetween(d1, d2){
   return Math.round((b - a) / (1000*60*60*24));
 }
 
-function colaboradorItemIntervals(rows){
+function colaboradorItemIntervals(rows, onlyFastRenewals){
   const byKey = {};
   rows.forEach(r=>{
     if(!r.fecha || !r.item) return;
@@ -1391,11 +1417,20 @@ function colaboradorItemIntervals(rows){
       prev = fecha;
     });
   });
-  return result.sort((a,b)=> b.totalEntregas - a.totalEntregas || a.nombre.localeCompare(b.nombre,'es') || a.fecha.localeCompare(b.fecha));
+  const sorted = result.sort((a,b)=> b.totalEntregas - a.totalEntregas || a.nombre.localeCompare(b.nombre,'es') || a.fecha.localeCompare(b.fecha));
+  if(onlyFastRenewals){
+    return sorted.filter(d => d.diasDesdeAnterior !== null && d.diasDesdeAnterior <= 7);
+  }
+  return sorted;
 }
 
-function renderIntervalTable(data){
-  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Ningún colaborador tiene el mismo EPP entregado más de una vez todavía — este reporte se llena a medida que haya renovaciones.</p>`;
+function renderIntervalTable(data, filtroActivo){
+  if(data.length===0){
+    const msg = filtroActivo
+      ? 'No hay renovaciones con 7 días o menos entre entregas — buena señal. Usa "Ver historial completo" para revisar todos los registros.'
+      : 'Ningún colaborador tiene el mismo EPP entregado más de una vez todavía — este reporte se llena a medida que haya renovaciones.';
+    return `<p style="font-size:13px; color:var(--text-soft); margin:0;">${msg}</p>`;
+  }
   const rowsHtml = data.map(d=>{
     let diasCell = '<span style="color:var(--line);">—</span>';
     if(d.diasDesdeAnterior !== null){
@@ -1450,7 +1485,7 @@ function topColaboradoresMatrix(rows, nColabs, nItems){
 function renderColabMatrix(data){
   const { colaboradores, items, matrix } = data;
   if(colaboradores.length===0 || items.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
-  const headerCells = items.map(it=>`<th style="text-align:center;">${it}</th>`).join('');
+  const headerCells = items.map(it=>`<th class="vert"><div class="vert-inner"><span>${it}</span></div></th>`).join('');
   const rowsHtml = colaboradores.map(nombre=>{
     const row = matrix[nombre] || {};
     let total = 0;
@@ -1464,7 +1499,7 @@ function renderColabMatrix(data){
   return `
   <div style="overflow-x:auto;">
     <table class="dash-table">
-      <thead><tr><th>Colaborador</th>${headerCells}<th style="text-align:center;">Total</th></tr></thead>
+      <thead><tr><th style="vertical-align:bottom;">Colaborador</th>${headerCells}<th style="text-align:center; vertical-align:bottom;">Total</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
   </div>`;
@@ -1485,6 +1520,62 @@ function renderHBars(data, colorFn){
   }).join('');
 }
 
+function renderTallaBars(data){
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const max = Math.max(...data.map(d=>d[1]));
+  return data.map((d,i)=>{
+    const pct = Math.max((d[1]/max*100), 4);
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    const sel = state.dashTallaSeleccionada === d[0];
+    return `
+    <div class="hbar-row hbar-clickable ${sel?'hbar-selected':''}" data-talla-detail="${d[0]}">
+      <div class="hbar-top"><span class="hbar-label">${d[0]}</span><span class="hbar-value">${d[1]}</span></div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${pct}%; background:${color};"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function groupTallaDetailByColaborador(item, talla, rows){
+  const byColab = {};
+  rows.filter(r => r.item===item && (r.talla||'')===talla).forEach(r=>{
+    const key = r.dni || r.nombre;
+    if(!byColab[key]) byColab[key] = { nombre:r.nombre, count:0, fechas:[] };
+    byColab[key].count++;
+    byColab[key].fechas.push(r.fecha);
+  });
+  return Object.values(byColab).sort((a,b)=>b.count-a.count);
+}
+
+function renderTallaDetailPanel(rowsForDetail){
+  if(!state.dashTallaSeleccionada){
+    return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Toca una barra de "Tallas más consumidas" para ver aquí el detalle por colaborador.</p>`;
+  }
+  const label = state.dashTallaSeleccionada;
+  const sepIdx = label.lastIndexOf(' — ');
+  const item = sepIdx>-1 ? label.slice(0, sepIdx) : label;
+  const talla = sepIdx>-1 ? label.slice(sepIdx+3) : '';
+  const groups = groupTallaDetailByColaborador(item, talla, rowsForDetail);
+  if(groups.length===0){
+    return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos para "${label}" con los filtros actuales.</p>`;
+  }
+  const rowsHtml = groups.map(g=>{
+    const fechasStr = g.fechas.slice().sort((a,b)=>String(a).localeCompare(String(b))).map(f=>fmtDate(f)).join(', ');
+    return `
+    <tr>
+      <td style="white-space:nowrap;" title="${g.nombre}">${shortName(g.nombre)}</td>
+      <td style="text-align:center; font-weight:700;">${g.count}</td>
+      <td>${fechasStr}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <div style="overflow-x:auto;">
+    <table class="dash-table">
+      <thead><tr><th>Colaborador</th><th style="text-align:center;">Cant.</th><th>Fechas</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderVBars(data, labelFn){
   labelFn = labelFn || monthLabel;
   if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
@@ -1498,6 +1589,30 @@ function renderVBars(data, labelFn){
       <div class="vbar-label">${labelFn(key)}</div>
     </div>`;
   }).join('')}</div>`;
+}
+
+function renderStackedVBars(data, labelFn){
+  labelFn = labelFn || monthLabel;
+  if(data.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
+  const max = Math.max(...data.map(d=>d.total), 1);
+  const catsUsed = new Set();
+  const cols = data.map(d=>{
+    const h = Math.max((d.total/max*100), 4);
+    const segs = Object.entries(d.cats).sort((a,b)=>b[1]-a[1]).map(([cat,count])=>{
+      catsUsed.add(cat);
+      const segPct = (count/d.total*100);
+      return `<div style="height:${segPct}%; background:${getCategoryColor(cat)};" title="${cat}: ${count}"></div>`;
+    }).join('');
+    return `
+    <div class="vbar-col">
+      <div class="vbar-value">${d.total}</div>
+      <div class="vbar-bar vbar-stacked" style="height:${h}%;">${segs}</div>
+      <div class="vbar-label">${labelFn(d.key)}</div>
+    </div>`;
+  }).join('');
+  const legend = Array.from(catsUsed).map(cat=>`
+    <span class="chip" style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; border-radius:50%; background:${getCategoryColor(cat)}; display:inline-block;"></span>${cat}</span>`).join('');
+  return `<div class="vbar-chart">${cols}</div><div style="margin-top:12px;">${legend}</div>`;
 }
 
 function svgDonut(colored){
@@ -1606,15 +1721,13 @@ function renderDashboardView(){
   const categoriasConTalla = Array.from(new Set(rowsConTalla.map(r=>r.categoria))).sort((a,b)=>a.localeCompare(b,'es'));
   const tallaFiltro = categoriasConTalla.includes(state.dashTallaCategoria) ? state.dashTallaCategoria : '';
   const rowsTallaFiltradas = tallaFiltro ? rowsConTalla.filter(r=>r.categoria===tallaFiltro) : rowsConTalla;
-  const porTalla = countBy(rowsTallaFiltradas, 'talla').slice(0,10);
+  const porTalla = countByLabel(rowsTallaFiltradas, r => `${r.item} — ${r.talla}`).slice(0,10);
   const tallaOptions = categoriasConTalla.map(c=>`<option value="${c}" ${tallaFiltro===c?'selected':''}>${c}</option>`).join('');
-  const tendenciaMensual = monthlyTrend(rows);
-  const tendenciaSemanal = weeklyTrend(rows, 12);
+  const tendenciaMensual = monthlyTrendByCategoria(rows);
+  const tendenciaSemanal = weeklyTrendByCategoria(rows, 12);
 
   let colabPanelBody = '';
-  if(state.dashColabView === 'item'){
-    colabPanelBody = renderHBars(topColaboradoresItemChart(rows,8));
-  } else if(state.dashColabView === 'detalle'){
+  if(state.dashColabView === 'detalle'){
     colabPanelBody = renderColabMatrix(topColaboradoresMatrix(rows,8,8));
   } else {
     colabPanelBody = renderStackedColabBars(topColaboradoresPorCategoria(rows,8));
@@ -1626,24 +1739,24 @@ function renderDashboardView(){
     ${renderKpis(rows)}
     <div class="dash-grid">
       <div class="card full-width">
-        <h2 class="step-title" style="font-size:17px;">EPPs más entregados</h2>
-        ${renderHBars(topItems)}
-      </div>
-      <div class="card full-width">
         <h2 class="step-title" style="font-size:17px;">Consumo por categoría</h2>
         ${renderDonutWithLegend(porCategoria, getCategoryColor)}
+      </div>
+      <div class="card full-width">
+        <h2 class="step-title" style="font-size:17px;">EPPs más consumidos</h2>
+        ${renderDonutWithLegend(topItems)}
       </div>
       <div class="card full-width" style="grid-column:1/-1;">
         <h2 class="step-title" style="font-size:17px;">Colaboradores que más EPP consumen</h2>
         <div class="pillgroup" style="margin-bottom:14px;">
           <div class="pill ${state.dashColabView==='categoria'?'sel':''}" data-colabview="categoria">Por categoría</div>
-          <div class="pill ${state.dashColabView==='item'?'sel':''}" data-colabview="item">Por EPPs</div>
           <div class="pill ${state.dashColabView==='detalle'?'sel':''}" data-colabview="detalle">Matriz colaborador × EPP</div>
         </div>
         ${colabPanelBody}
       </div>
       <div class="card full-width">
         <h2 class="step-title" style="font-size:17px;">Tallas más consumidas</h2>
+        <p class="step-desc" style="margin-bottom:10px;">Toca una barra para ver el detalle a la derecha.</p>
         <div class="field" style="margin-bottom:12px;">
           <label>Filtrar por categoría</label>
           <select id="dash_talla_cat">
@@ -1651,20 +1764,32 @@ function renderDashboardView(){
             ${tallaOptions}
           </select>
         </div>
-        ${renderHBars(porTalla)}
+        ${renderTallaBars(porTalla)}
       </div>
       <div class="card full-width">
-        <h2 class="step-title" style="font-size:17px;">Tendencia mensual</h2>
-        ${renderVBars(tendenciaMensual, monthLabel)}
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 class="step-title" style="font-size:17px; margin:0;">Detalle${state.dashTallaSeleccionada ? ': '+state.dashTallaSeleccionada : ''}</h2>
+          ${state.dashTallaSeleccionada ? `<span id="btnClearTallaDetail" style="font-size:12px; font-weight:600; color:var(--text-soft); cursor:pointer;">Limpiar</span>` : ''}
+        </div>
+        <p class="step-desc" style="margin-bottom:10px;">Agrupado por colaborador, con cantidad y fechas de entrega.</p>
+        ${renderTallaDetailPanel(rowsTallaFiltradas)}
       </div>
       <div class="card full-width" style="grid-column:1/-1;">
         <h2 class="step-title" style="font-size:17px;">Tendencia semanal (últimas 12 semanas)</h2>
-        ${renderVBars(tendenciaSemanal, weekLabel)}
+        ${renderStackedVBars(tendenciaSemanal, weekLabel)}
+      </div>
+      <div class="card full-width" style="grid-column:1/-1;">
+        <h2 class="step-title" style="font-size:17px;">Tendencia mensual</h2>
+        ${renderStackedVBars(tendenciaMensual, monthLabel)}
       </div>
       <div class="card full-width" style="grid-column:1/-1;">
         <h2 class="step-title" style="font-size:17px;">Frecuencia de renovación por colaborador</h2>
         <p class="step-desc">Para cada colaborador, el EPP que más veces se le ha repetido, con las fechas y días entre cada entrega.</p>
-        ${renderIntervalTable(colaboradorItemIntervals(rows))}
+        <div class="pillgroup" style="margin-bottom:14px;">
+          <div class="pill ${state.dashRenovacionFiltro!=='todo'?'sel':''}" data-renovfiltro="semana">Renovaciones ≤ 7 días</div>
+          <div class="pill ${state.dashRenovacionFiltro==='todo'?'sel':''}" data-renovfiltro="todo">Ver historial completo</div>
+        </div>
+        ${renderIntervalTable(colaboradorItemIntervals(rows, state.dashRenovacionFiltro!=='todo'), state.dashRenovacionFiltro!=='todo')}
       </div>
     </div>
   </div>`;
@@ -2275,7 +2400,18 @@ function attachHandlers(){
       el.onclick = ()=>{ state.dashColabView = el.dataset.colabview; render(); };
     });
     const tallaCatSel = document.getElementById('dash_talla_cat');
-    if(tallaCatSel) tallaCatSel.onchange = (e)=>{ state.dashTallaCategoria = e.target.value; render(); };
+    if(tallaCatSel) tallaCatSel.onchange = (e)=>{ state.dashTallaCategoria = e.target.value; state.dashTallaSeleccionada = null; render(); };
+    document.querySelectorAll('[data-renovfiltro]').forEach(el=>{
+      el.onclick = ()=>{ state.dashRenovacionFiltro = el.dataset.renovfiltro; render(); };
+    });
+    document.querySelectorAll('[data-talla-detail]').forEach(el=>{
+      el.onclick = ()=>{
+        state.dashTallaSeleccionada = el.dataset.tallaDetail;
+        render();
+      };
+    });
+    const clearTallaBtn = document.getElementById('btnClearTallaDetail');
+    if(clearTallaBtn) clearTallaBtn.onclick = ()=>{ state.dashTallaSeleccionada = null; render(); };
   } else if(state.view==='colaboradores') {
     if(state.colabForm){
       ['cf_dni','cf_nombre','cf_cargo','cf_sede','cf_nivel'].forEach((id,i)=>{
@@ -2397,7 +2533,8 @@ function resetAll(){
     colabFilter: state.colabFilter, colabSearch: state.colabSearch, colabForm: null,
     syncStatus:'idle', syncMessage:'',
     dashFilters: state.dashFilters || {sede:'',categoria:'',desde:'',hasta:''},
-    dashColabView: state.dashColabView || 'categoria'
+    dashColabView: state.dashColabView || 'categoria',
+    dashRenovacionFiltro: state.dashRenovacionFiltro || 'semana'
   };
 }
 

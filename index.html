@@ -638,14 +638,15 @@ async function loadWorkersMap(){
   }
 }
 
-async function fetchAllRecords(){
+async function fetchAllRecords(includeFirmas){
   if(!sheetUrl) return [];
   try{
     const sep = sheetUrl.includes('?') ? '&' : '?';
-    const [regJson, firJson] = await Promise.all([
-      sheetFetch(sheetUrl + sep + 'type=registros'),
-      sheetFetch(sheetUrl + sep + 'type=firmas').catch(()=>({rows:[]}))
-    ]);
+    const promises = [sheetFetch(sheetUrl + sep + 'type=registros')];
+    if(includeFirmas){ promises.push(sheetFetch(sheetUrl + sep + 'type=firmas').catch(()=>({rows:[]}))); }
+    const results = await Promise.all(promises);
+    const regJson = results[0];
+    const firJson = results[1] || {rows:[]};
     const rows = regJson.rows || [];
     const firmaById = {};
     (firJson.rows || []).forEach(f=>{
@@ -1206,7 +1207,7 @@ function flattenRecordItems(r){
 
 async function refreshHistorial(){
   historialCache = null; render();
-  const recs = await fetchAllRecords();
+  const recs = await fetchAllRecords(false);
   historialCache = recs;
   render();
 }
@@ -1911,7 +1912,7 @@ function buildPrintHtml(dni){
 
 async function printColaboradorFormat(dni){
   toast('Actualizando datos antes de imprimir…');
-  historialCache = await fetchAllRecords();
+  historialCache = await fetchAllRecords(true);
   document.getElementById('printArea').innerHTML = buildPrintHtml(dni);
   setTimeout(()=> window.print(), 150);
 }

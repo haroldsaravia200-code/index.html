@@ -551,6 +551,7 @@ const CATEGORIES = [
     {id:'guantes_anticorte', label:'Guantes anticorte', talla:GLOVE_SIZES},
     {id:'guantes_badana', label:'Guantes badana', talla:GLOVE_SIZES},
     {id:'guantes_nitrilo', label:'Guantes nitrilo', talla:GLOVE_SIZES},
+    {id:'guantes_showa', label:'Guantes Showa', talla:GLOVE_SIZES},
     {id:'guantes_lavado', label:'Guantes de lavado verde', talla:GLOVE_SIZES},
     {id:'guantes_soldar', label:'Guantes de soldar', talla:GLOVE_SIZES},
     {id:'mangas_soldar', label:'Mangas de soldar', talla:GLOVE_SIZES} ]},
@@ -1487,21 +1488,28 @@ function renderColabMatrix(data){
   const { colaboradores, items, matrix } = data;
   if(colaboradores.length===0 || items.length===0) return `<p style="font-size:13px; color:var(--text-soft); margin:0;">Sin datos.</p>`;
   const headerCells = items.map(it=>`<th class="vert"><div class="vert-inner"><span>${it}</span></div></th>`).join('');
+  const colTotals = {};
+  items.forEach(it=>{ colTotals[it] = 0; });
+  let grandTotal = 0;
   const rowsHtml = colaboradores.map(nombre=>{
     const row = matrix[nombre] || {};
     let total = 0;
     const cells = items.map(it=>{
       const v = row[it] || 0;
       total += v;
+      colTotals[it] += v;
       return `<td style="text-align:center; ${v?'font-weight:700;':'color:var(--line);'}">${v || '·'}</td>`;
     }).join('');
+    grandTotal += total;
     return `<tr><td style="white-space:nowrap;" title="${nombre}">${shortName(nombre)}</td>${cells}<td style="text-align:center; font-weight:800; background:var(--bg);">${total}</td></tr>`;
   }).join('');
+  const totalCells = items.map(it=>`<td style="text-align:center; font-weight:800; background:var(--bg);">${colTotals[it]}</td>`).join('');
+  const totalRow = `<tr style="border-top:2px solid var(--line);"><td style="white-space:nowrap; font-weight:800;">Total</td>${totalCells}<td style="text-align:center; font-weight:800; background:var(--steel); color:#fff;">${grandTotal}</td></tr>`;
   return `
   <div style="overflow-x:auto;">
     <table class="dash-table">
       <thead><tr><th style="vertical-align:bottom;">Colaborador</th>${headerCells}<th style="text-align:center; vertical-align:bottom;">Total</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
+      <tbody>${rowsHtml}${totalRow}</tbody>
     </table>
   </div>`;
 }

@@ -727,6 +727,15 @@ async function loadWorkersMap(){
       const sep = sheetUrl.includes('?') ? '&' : '?';
       const json = await sheetFetch(sheetUrl + sep + 'type=bootstrap&' + bust(), {cache:'no-store'});
       if(json.ok===false) throw new Error(json.error||'Respuesta inesperada');
+      if(!json.registros || !json.colaboradores){
+        // Code.gs antiguo (sin "bootstrap"): se cargan por separado para que todo siga funcionando
+        const [c, r] = await Promise.all([
+          sheetFetch(sheetUrl + sep + 'type=colaboradores&' + bust(), {cache:'no-store'}),
+          sheetFetch(sheetUrl + sep + 'type=registros&' + bust(), {cache:'no-store'})
+        ]);
+        json.colaboradores = c.rows || []; json.registros = r.rows || [];
+        console.warn('Actualiza Code.gs a la última versión para cargar más rápido');
+      }
       workersMap = parseColabs(json.colaboradores);
       historialCache = mergePending(parseRecords(json.registros));
       lsSet(CACHE_KEY, { url: sheetUrl, t: Date.now(), colab: json.colaboradores, regs: json.registros });

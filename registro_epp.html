@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Registro de EPP · RAM Equipos</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1a1f27">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EPP RAM">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -807,6 +814,7 @@ function updatePendingBar(){
   else { el.style.display='none'; }
 }
 window.addEventListener('online', flushQueue);
+if('serviceWorker' in navigator && location.protocol==='https:'){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 setInterval(()=>{ if(getQueue().length) flushQueue(); }, 20000);
 
 async function saveRecord(record){

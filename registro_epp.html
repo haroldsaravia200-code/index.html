@@ -601,6 +601,8 @@ let state = {
   sheetConnectMessage: '',
 };
 let workersMap = {};
+let workersMapLoading = false;
+let workersMapError = null;
 let sheetUrl = null;
 let historialCache = null;
 let searchTerm = '';
@@ -616,79 +618,199 @@ function persistSheetUrlToBrowser(url){
 }
 
 /* ============ DATA LAYER — la Hoja de Google es la única fuente de datos ============ */
-async function loadWorkersMap(){
-  if(!sheetUrl){ workersMap = {}; return; }
-  try{
-    const sep = sheetUrl.includes('?') ? '&' : '?';
-    const json = await sheetFetch(sheetUrl + sep + 'type=colaboradores');
-    const map = {};
-    (json.rows||[]).forEach(row=>{
-      const dni = String(row['DNI']||'').trim();
-      if(!dni) return;
-      map[dni] = {
-        nombre: row['Nombre']||'',
-        cargo: row['Cargo']||'',
-        sede: row['Sede']||'',
-        nivel: row['Nivel']||'',
-        estado: String(row['Estado']||'Activo').toLowerCase()==='activo' ? 'activo' : 'inactivo'
-      };
-    });
-    workersMap = map;
-  }catch(e){
-    console.error('No se pudo cargar colaboradores desde la hoja', e);
-  }
+
+// ---- Lectura tolerante de filas cargadas a mano en la hoja ----
+function normKey(k){ return String(k||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function rowGet(row, names){
+  if(!row._nk){ Object.defineProperty(row,'_nk',{value:{},enumerable:false}); Object.keys(row).forEach(k=>{ row._nk[normKey(k)] = row[k]; }); }
+  for(const n of names){ const v = row._nk[normKey(n)]; if(v!==undefined && v!==null && String(v).trim()!=='') return v; }
+  return '';
+}
+function normFechaSheet(v){
+  if(v===''||v==null) return '';
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  const s = String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0,10);
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if(m){ let y = m[3].length===2 ? '20'+m[3] : m[3]; return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'); }
+  if(/^\d{5}$/.test(s)){ const d = new Date(Math.round((Number(s)-25569)*86400000)); return d.toISOString().slice(0,10); }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
+}
+function normDni(v){ return String(v==null?'':v).trim().replace(/\.0+$/,''); }
+let _itemCatMap = null;
+function inferCategoria(itemName){
+  if(!_itemCatMap){ _itemCatMap = {}; CATEGORIES.forEach(c=>c.items.forEach(it=>{ _itemCatMap[normKey(it.label)] = c.label; })); }
+  return _itemCatMap[normKey(itemName)] || '';
+}
+function bust(){ return '_=' + Date.now(); }
+
+/* ===== Caché local + carga única (bootstrap) + cola de envío en segundo plano ===== */
+const CACHE_KEY='ram_epp_cache_v2', QUEUE_KEY='ram_epp_queue_v1';
+function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function getQueue(){ return lsGet(QUEUE_KEY) || []; }
+function setQueue(q){ lsSet(QUEUE_KEY, q); updatePendingBar(); }
+
+function parseColabs(rows){
+  const map = {};
+  (rows||[]).forEach(row=>{
+    const dni = normDni(rowGet(row,['DNI','Documento']));
+    if(!dni) return;
+    map[dni] = {
+      nombre: String(rowGet(row,['Nombre','Trabajador','Nombres'])),
+      cargo: String(rowGet(row,['Cargo'])),
+      sede: String(rowGet(row,['Sede'])),
+      nivel: String(rowGet(row,['Nivel'])),
+      estado: String(rowGet(row,['Estado'])||'Activo').trim().toLowerCase()==='inactivo' ? 'inactivo' : 'activo'
+    };
+  });
+  return map;
 }
 
+function parseRecords(rows, firmaById){
+  firmaById = firmaById || {};
+  const byId = {}, order = [];
+  (rows||[]).forEach(row=>{
+    const fecha = normFechaSheet(rowGet(row,['Fecha']));
+    const nombre = String(rowGet(row,['Trabajador','Nombre']));
+    const dni = normDni(rowGet(row,['DNI']));
+    const tipo = String(rowGet(row,['Tipo de entrega','Tipo']));
+    const item = String(rowGet(row,['EPPs','EPP','Item','Ítem']));
+    if(!item && !nombre && !dni) return;
+    const rawId = String(rowGet(row,['ID']));
+    const id = rawId || ('m_' + fecha + '_' + (dni||nombre) + '_' + tipo);
+    // Mismo ID en fechas distintas = entregas distintas
+    const gk = id + '|' + fecha + '|' + dni;
+    if(!byId[gk]){
+      order.push(gk);
+      byId[gk] = { id, manual: !rawId, fecha,
+        worker: { nombre, dni, cargo: String(rowGet(row,['Cargo'])), sede: String(rowGet(row,['Sede'])) },
+        tipo_entrega: tipo, otros:'', signatureData: firmaById[id] || null, _itemRows: [] };
+    }
+    const cat = String(rowGet(row,['Categoría','Categoria'])) || inferCategoria(item);
+    byId[gk]._itemRows.push({ categoria: cat, item, talla: String(rowGet(row,['Talla'])) });
+  });
+  return order.map(k => byId[k]).sort((x,y)=> String(x.fecha).localeCompare(String(y.fecha))).reverse();
+}
+
+// Registros guardados en este equipo que la hoja aún no confirma: se muestran igual
+function mergePending(recs){
+  const q = getQueue();
+  if(!q.length) return recs;
+  const have = new Set(recs.map(r=>r.id+'|'+r.fecha));
+  const extra = [];
+  q.forEach(it=>{
+    const r = it.record;
+    if(have.has(r.id+'|'+r.fecha)) return;
+    extra.push({ id:r.id, fecha:r.fecha, worker:r.worker, tipo_entrega: tipoEntregaLabel(r.tipo_entrega), otros:'',
+      signatureData: r.signatureData||null, _itemRows: it.rows.map(x=>({categoria:x['Categoría'], item:x['EPPs'], talla:x['Talla']})) });
+  });
+  return extra.reverse().concat(recs);
+}
+
+let refreshPromise = null;
+// Carga colaboradores + registros en UNA llamada. Pinta primero lo guardado en el equipo.
+async function loadWorkersMap(){
+  if(!sheetUrl){ workersMap = {}; workersMapLoading = false; return; }
+  if(refreshPromise) return refreshPromise;
+  const cached = lsGet(CACHE_KEY);
+  if(cached && cached.url===sheetUrl){
+    if(Object.keys(workersMap).length===0) workersMap = parseColabs(cached.colab);
+    if(historialCache===null) historialCache = mergePending(parseRecords(cached.regs));
+  }
+  workersMapLoading = Object.keys(workersMap).length===0;
+  workersMapError = null;
+  refreshPromise = (async()=>{
+    try{
+      const sep = sheetUrl.includes('?') ? '&' : '?';
+      const json = await sheetFetch(sheetUrl + sep + 'type=bootstrap&' + bust(), {cache:'no-store'});
+      if(json.ok===false) throw new Error(json.error||'Respuesta inesperada');
+      workersMap = parseColabs(json.colaboradores);
+      historialCache = mergePending(parseRecords(json.registros));
+      lsSet(CACHE_KEY, { url: sheetUrl, t: Date.now(), colab: json.colaboradores, regs: json.registros });
+    }catch(e){
+      console.error('No se pudo cargar desde la hoja', e);
+      if(Object.keys(workersMap).length===0) workersMapError = e.message || 'No se pudo conectar con la Hoja de Google';
+    }finally{
+      if(historialCache===null) historialCache = mergePending([]);
+      workersMapLoading = false;
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
+// Solo para imprimir / exportar: incluye firmas (pesado)
 async function fetchAllRecords(includeFirmas){
   if(!sheetUrl) return [];
   try{
     const sep = sheetUrl.includes('?') ? '&' : '?';
-    const promises = [sheetFetch(sheetUrl + sep + 'type=registros')];
-    if(includeFirmas){ promises.push(sheetFetch(sheetUrl + sep + 'type=firmas').catch(()=>({rows:[]}))); }
+    const promises = [sheetFetch(sheetUrl + sep + 'type=registros&' + bust(), {cache:'no-store'})];
+    if(includeFirmas){ promises.push(sheetFetch(sheetUrl + sep + 'type=firmas&' + bust(), {cache:'no-store'}).catch(()=>({rows:[]}))); }
     const results = await Promise.all(promises);
-    const regJson = results[0];
-    const firJson = results[1] || {rows:[]};
-    const rows = regJson.rows || [];
     const firmaById = {};
-    (firJson.rows || []).forEach(f=>{
+    ((results[1]||{}).rows || []).forEach(f=>{
       const id = String(f['ID']||'');
       if(id && f['Firma']){ firmaById[id] = f['Firma']; }
     });
-    const byId = {};
-    const order = [];
-    rows.forEach(row=>{
-      const id = String(row['ID']||'');
-      if(!id) return;
-      if(!byId[id]){
-        byId[id] = {
-          id,
-          fecha: row['Fecha']||'',
-          worker: { nombre: row['Trabajador']||'', dni: String(row['DNI']||''), cargo: row['Cargo']||'', sede: row['Sede']||'' },
-          tipo_entrega: row['Tipo de entrega']||'',
-          otros: '',
-          signatureData: firmaById[id] || null,
-          _itemRows: []
-        };
-        order.push(id);
-      }
-      byId[id]._itemRows.push({ categoria: row['Categoría']||'', item: row['EPPs']||'', talla: row['Talla']||'' });
-    });
-    return order.map(id => byId[id]).reverse();
+    return mergePending(parseRecords(results[0].rows, firmaById));
   }catch(e){
     console.error('No se pudo cargar registros desde la hoja', e);
     return [];
   }
 }
 
-async function saveRecord(record){
-  const res = await syncRegistroToSheet(record);
-  if(!res.ok){ throw new Error(res.message || 'No se pudo guardar en la Hoja de Google'); }
-  record._itemRows = buildItemRows(record);
-  if(historialCache) historialCache.unshift(record);
-  const prevEstado = workersMap[record.worker.dni] ? workersMap[record.worker.dni].estado : 'activo';
-  if(!workersMap[record.worker.dni]){
-    workersMap[record.worker.dni] = { nombre:record.worker.nombre, cargo:record.worker.cargo, sede:record.worker.sede, nivel:'', estado: prevEstado };
+// ---- Cola de envío: guarda al instante en el equipo y sube a la hoja en segundo plano ----
+let flushing = false;
+async function flushQueue(){
+  if(flushing || !sheetUrl) return;
+  flushing = true;
+  try{
+    let q = getQueue();
+    while(q.length){
+      const it = q[0];
+      try{
+        const body = { type:'registro', action:'append', rows: it.rows };
+        if(it.record.signatureData) body.firma = { 'ID': it.record.id, 'Fecha': it.record.fecha, 'Trabajador': it.record.worker.nombre, 'Firma': it.record.signatureData };
+        const json = await sheetFetch(sheetUrl, { method:'POST', body: JSON.stringify(body) });
+        if(!json.ok) throw new Error(json.error||'Respuesta inesperada');
+        q = getQueue().filter(x=>x.record.id!==it.record.id);
+        setQueue(q);
+      }catch(e){
+        console.error('Reintentará más tarde', e);
+        break;
+      }
+    }
+  } finally { flushing = false; updatePendingBar(); }
+}
+function updatePendingBar(){
+  let el = document.getElementById('pendingBar');
+  const n = getQueue().length;
+  if(!el){
+    el = document.createElement('div'); el.id='pendingBar';
+    el.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:9999;background:#92400e;color:#fff;padding:8px 14px;border-radius:999px;font:600 13px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none;cursor:pointer;max-width:92vw';
+    el.onclick = ()=>{ flushQueue(); toast('Reintentando enviar…'); };
+    document.body.appendChild(el);
   }
+  if(n){ el.textContent = n + ' registro(s) sin enviar a la hoja · toca para reintentar'; el.style.display='block'; }
+  else { el.style.display='none'; }
+}
+window.addEventListener('online', flushQueue);
+setInterval(()=>{ if(getQueue().length) flushQueue(); }, 20000);
+
+async function saveRecord(record){
+  if(!sheetUrl) throw new Error('No hay hoja de Google conectada');
+  const rows = buildSheetRows(record);
+  if(rows.length===0) throw new Error('No hay EPP seleccionados para guardar');
+  record._itemRows = buildItemRows(record);
+  setQueue(getQueue().concat([{ record, rows }]));
+  if(historialCache) historialCache.unshift(record);
+  if(!workersMap[record.worker.dni]){
+    workersMap[record.worker.dni] = { nombre:record.worker.nombre, cargo:record.worker.cargo, sede:record.worker.sede, nivel:'', estado:'activo' };
+  }
+  flushQueue();   // en segundo plano, no se espera
   return true;
 }
 
@@ -891,6 +1013,10 @@ function renderStep1(){
     .filter(([dni,v]) => (v.estado||'activo') === 'activo')
     .map(([dni,v]) => ({dni, ...v}))
     .sort((a,b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  if(activos.length === 0 && workersMapLoading){
+    return `<div class="card"><div class="loading">Cargando colaboradores desde tu Hoja de Google…</div></div>`;
+  }
 
   if(activos.length === 0){
     return `
@@ -1207,9 +1333,8 @@ function flattenRecordItems(r){
 }
 
 async function refreshHistorial(){
-  historialCache = null; render();
-  const recs = await fetchAllRecords(false);
-  historialCache = recs;
+  toast('Actualizando…');
+  await loadWorkersMap();
   render();
 }
 
@@ -2023,13 +2148,19 @@ function bindColabResultHandlers(){
 function renderColaboradoresView(){
   if(state.colabForm){ return renderColabForm(); }
 
+  if(workersMapLoading && Object.keys(workersMap).length===0){
+    return `<div class="view"><div class="loading">Cargando colaboradores desde tu Hoja de Google…</div></div>`;
+  }
+
   const all = Object.values(workersMap);
   const counts = {
     activos: all.filter(r=>r.estado==='activo').length,
     inactivos: all.filter(r=>r.estado==='inactivo').length,
   };
+  const errorBanner = workersMapError ? `<div class="storage-warn"><span>No se pudo actualizar desde la Hoja de Google: ${workersMapError}. Mostrando la última información disponible.</span></div>` : '';
 
   return `
+  ${errorBanner}
   <div class="view">
     <div class="colab-toolbar">
       <input type="text" id="in_colab_search" placeholder="Buscar por nombre o DNI…" value="${state.colabSearch||''}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:1; padding:11px 13px; border:1.5px solid var(--line); border-radius:10px; font-size:16px; background:#fff;">
@@ -2116,6 +2247,14 @@ async function testSheetConnection(url){
   }catch(e){
     return {ok:false, message:e.message};
   }
+}
+
+function buildSheetRows(record){
+  return buildItemRows(record).map(x => ({
+    'ID': record.id, 'Fecha': record.fecha, 'Trabajador': record.worker.nombre, 'DNI': record.worker.dni,
+    'Cargo': record.worker.cargo, 'Sede': record.worker.sede, 'Tipo de entrega': tipoEntregaLabel(record.tipo_entrega),
+    'Categoría': x.categoria, 'EPPs': x.item, 'Talla': x.talla
+  }));
 }
 
 async function syncRegistroToSheet(record){
@@ -2258,10 +2397,12 @@ function attachHandlers(){
     el.onclick = async ()=>{
       const target = el.dataset.tab;
       if(state.view==='colaboradores' && target!=='colaboradores'){ state.colabForm = null; }
-      if((target==='historial' || target==='dashboard') && state.view!==target){ historialCache = null; }
       state.view = target;
+      if((target==='colaboradores' || target==='form') && sheetUrl && Object.keys(workersMap).length===0){
+        workersMapLoading = true;
+      }
       render();
-      if((target==='colaboradores' || target==='form') && sheetUrl){
+      if(sheetUrl && (target==='colaboradores' || target==='form' || target==='historial' || target==='dashboard')){
         await loadWorkersMap();
         render();
       }
@@ -2551,9 +2692,13 @@ function resetAll(){
 (async function init(){
   loadSheetUrl();
   render();
+  updatePendingBar();
   if(sheetUrl){
-    await loadWorkersMap();
+    const p = loadWorkersMap();   // pinta ya con lo guardado en el equipo y luego actualiza
     render();
+    await p;
+    render();
+    flushQueue();
   }
 })();
 </script>
